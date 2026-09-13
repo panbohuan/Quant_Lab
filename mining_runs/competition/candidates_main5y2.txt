@@ -1,0 +1,25 @@
+# 第四届因子大赛候选清单（5 年主窗口批次）
+# 格式: 名称 ~ 公式 ~ 方向(1=值大越好, 0=值小越好)
+# 调仓周期 3 日, 分组数 10, 单边成本 0.3%
+# 窗口: 20210913-20260912 (精确 5 年, rev5 已单独完成)
+
+# --- 反转族 ---
+rev20 ~ RETURNS(CLOSE,20) ~ 0
+bias20 ~ BIAS(CLOSE,20) ~ 0
+
+# --- 小市值/流动性族 ---
+small_rev10 ~ RETURNS(CLOSE,10)*1000000000/MARKET_CAP ~ 0
+low_amount ~ AMOUNT ~ 0
+low_price ~ AMOUNT/VOLUME ~ 0
+
+# --- 低波动/低换手族 ---
+low_vol ~ STD(RETURNS(CLOSE,1),20) ~ 0
+low_turnover ~ TURNOVER ~ 0
+
+# --- 量价结构族 ---
+vol_surge ~ VOLUME/MA(VOLUME,20) ~ 0
+corr_pv ~ CORR(CLOSE,VOLUME,20) ~ 0
+
+# --- 价值族 ---
+value_bm ~ book_to_market_ratio_lyr ~ 1
+low_pb ~ pb_ratio_ttm ~ 0

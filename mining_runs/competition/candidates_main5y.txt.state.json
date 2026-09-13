@@ -1,0 +1,62 @@
+{
+ "rev5": {
+  "spec": "50c09597b2ce19e1",
+  "factor_id": "6aa64ff36df2a192a47e813a",
+  "error": "run: 因子分析执行失败（无详细错误信息）"
+ },
+ "rev20": {
+  "spec": "fc38d16f9e073334",
+  "factor_id": "6aa64ff7d5536b11c13ee309",
+  "error": "run: 因子分析执行失败（无详细错误信息）"
+ },
+ "bias20": {
+  "spec": "8e14238245db49df",
+  "factor_id": "6aa64ffbd5536b11c13ee30e",
+  "error": "run: 因子分析执行失败（无详细错误信息）"
+ },
+ "small_rev10": {
+  "spec": "ab93cd9d5fffc992",
+  "factor_id": "6aa64fffd5536b11c13ee30f",
+  "error": "run: 因子分析执行失败（无详细错误信息）"
+ },
+ "low_amount": {
+  "spec": "b27e0d2452fea843",
+  "factor_id": "6aa650035d52c44d2f55c71b",
+  "error": "run: 因子分析执行失败（无详细错误信息）"
+ },
+ "low_price": {
+  "spec": "d7f0262c3029eca1",
+  "factor_id": "6aa6500751cdfe29b2e0c049",
+  "error": "run: 因子分析执行失败（无详细错误信息）"
+ },
+ "low_vol": {
+  "spec": "18457b49cd323245",
+  "factor_id": "6aa6500a5d52c44d2f55c71e",
+  "error": "run: 因子分析执行失败（无详细错误信息）"
+ },
+ "low_turnover": {
+  "spec": "1c4157e24305d5d2",
+  "factor_id": "6aa6500e51cdfe29b2e0c04a",
+  "error": "run: 因子分析执行失败（无详细错误信息）"
+ },
+ "vol_surge": {
+  "spec": "af24c3a04d721d5b",
+  "factor_id": "6aa65012d5536b11c13ee316",
+  "error": "run: 因子分析执行失败（无详细错误信息）"
+ },
+ "corr_pv": {
+  "spec": "034e775fac69065a",
+  "factor_id": "6aa65016d5536b11c13ee319",
+  "error": "run: 因子分析执行失败（无详细错误信息）"
+ },
+ "value_bm": {
+  "spec": "ce81624306996598",
+  "factor_id": "6aa6501ad5536b11c13ee31c",
+  "error": "run: 因子分析执行失败（无详细错误信息）"
+ },
+ "low_pb": {
+  "spec": "eccac7eb2dd63490",
+  "factor_id": "6aa6501e6df2a192a47e813e",
+  "error": "run: 因子分析执行失败（无详细错误信息）"
+ }
+}

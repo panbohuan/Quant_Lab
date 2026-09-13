@@ -1,0 +1,63 @@
+{
+ "rev20": {
+  "spec": "bfb9c5de59376bd0",
+  "factor_id": "6aa650fa51cdfe29b2e0c066",
+  "run_id": "6aa650fb6df2a192a47e8163",
+  "raw_result": "candidates_main5y2.results\\6aa650fb6df2a192a47e8163.json",
+  "metrics": {
+   "ic_mean": "-0.0373",
+   "rank_ic": "-0.0512",
+   "ic_ir": "-0.2560",
+   "ic_p_value": "0.0000",
+   "monotonicity": "0.67",
+   "long_excess": 7.84,
+   "short_excess": -42.44,
+   "turnover": 41.28,
+   "long_sharpe": 0.5381,
+   "long_max_drawdown": 48.42,
+   "long_monthly_win_rate": 55.74
+  }
+ },
+ "bias20": {
+  "spec": "83de8f594130ab02",
+  "factor_id": "6aa6514ca7f535324660bf2d",
+  "run_id": "6aa6514ed5536b11c13ee364",
+  "raw_result": "candidates_main5y2.results\\6aa6514ed5536b11c13ee364.json",
+  "metrics": {
+   "ic_mean": "-0.0336",
+   "rank_ic": "-0.0435",
+   "ic_ir": "-0.2414",
+   "ic_p_value": "0.0000",
+   "monotonicity": "0.54",
+   "long_excess": 2.27,
+   "short_excess": -39.95,
+   "turnover": 42.1,
+   "long_sharpe": 0.3528,
+   "long_max_drawdown": 51.83,
+   "long_monthly_win_rate": 55.74
+  }
+ },
+ "small_rev10": {
+  "spec": "74559d72a867b0af",
+  "factor_id": "6aa651a36df2a192a47e8189",
+  "run_id": "6aa651a46df2a192a47e818a",
+  "raw_result": "candidates_main5y2.results\\6aa651a46df2a192a47e818a.json",
+  "metrics": {
+   "ic_mean": "-0.0253",
+   "rank_ic": "-0.0334",
+   "ic_ir": "-0.2108",
+   "ic_p_value": "0.0000",
+   "monotonicity": "0.59",
+   "long_excess": 7.37,
+   "short_excess": -25.51,
+   "turnover": 49.83,
+   "long_sharpe": 0.4929,
+   "long_max_drawdown": 57.97,
+   "long_monthly_win_rate": 62.3
+  }
+ },
+ "low_amount": {
+  "spec": "b1b9292b7b470a09",
+  "factor_id": "6aa651efa7f535324660bf36"
+ }
+}

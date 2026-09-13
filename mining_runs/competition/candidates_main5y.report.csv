@@ -1,0 +1,13 @@
+name,direction,status,factor_id,run_id,rank_ic,ic_mean,ic_ir,ic_p_value,monotonicity,long_excess_pct,turnover_pct,annual_cost_pct,net_excess_pct,long_sharpe,long_max_drawdown_pct,long_monthly_win_rate_pct,raw_result,error
+rev5,0,failed,6aa64ff36df2a192a47e813a,,,,,,,,,,,,,,,run: 因子分析执行失败（无详细错误信息）
+rev20,0,failed,6aa64ff7d5536b11c13ee309,,,,,,,,,,,,,,,run: 因子分析执行失败（无详细错误信息）
+bias20,0,failed,6aa64ffbd5536b11c13ee30e,,,,,,,,,,,,,,,run: 因子分析执行失败（无详细错误信息）
+small_rev10,0,failed,6aa64fffd5536b11c13ee30f,,,,,,,,,,,,,,,run: 因子分析执行失败（无详细错误信息）
+low_amount,0,failed,6aa650035d52c44d2f55c71b,,,,,,,,,,,,,,,run: 因子分析执行失败（无详细错误信息）
+low_price,0,failed,6aa6500751cdfe29b2e0c049,,,,,,,,,,,,,,,run: 因子分析执行失败（无详细错误信息）
+low_vol,0,failed,6aa6500a5d52c44d2f55c71e,,,,,,,,,,,,,,,run: 因子分析执行失败（无详细错误信息）
+low_turnover,0,failed,6aa6500e51cdfe29b2e0c04a,,,,,,,,,,,,,,,run: 因子分析执行失败（无详细错误信息）
+vol_surge,0,failed,6aa65012d5536b11c13ee316,,,,,,,,,,,,,,,run: 因子分析执行失败（无详细错误信息）
+corr_pv,0,failed,6aa65016d5536b11c13ee319,,,,,,,,,,,,,,,run: 因子分析执行失败（无详细错误信息）
+value_bm,1,failed,6aa6501ad5536b11c13ee31c,,,,,,,,,,,,,,,run: 因子分析执行失败（无详细错误信息）
+low_pb,0,failed,6aa6501e6df2a192a47e813e,,,,,,,,,,,,,,,run: 因子分析执行失败（无详细错误信息）
