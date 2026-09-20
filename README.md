@@ -33,8 +33,9 @@ JoinQuant_Strategies/
 │   ├── s08_factor_neutralize.py  因子中性化（Barra 风格残差法）
 │   ├── s09_factor_ic_weight.py   因子 IC/IR 动态加权
 │   └── s10_ml_stock.py           机器学习选股（随机森林）
-└── docs/                      # 每个策略对应的详解文档
+└── docs/                      # 每个策略对应的详解文档 + 常见函数速查
     ├── 01_ma_cross.md  …  ├── 10_ml_stock.md
+    └── common_functions.md    # get_ 系列数据获取函数详解（标的池/行情/基本面/实时信息）
 ```
 
 ## 三、十个策略总览
@@ -87,6 +88,8 @@ JoinQuant_Strategies/
 | `get_industry(...)` | 查询股票所属行业 |
 | `order / order_value / order_target_value` | 下单（股数 / 金额 / 目标市值） |
 | `log.info(...)` | 输出日志 |
+
+> 更完整的 `get_` 系列数据获取函数（含核心参数、返回值、基本用法、简单例子、全部属性）见 [`docs/common_functions.md`](docs/common_functions.md)。
 
 ## 七、风险提示与免责声明
 
