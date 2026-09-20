@@ -5,17 +5,22 @@
 第四届因子大赛的 `skill-pandaai-factor-online`。所有回测结果均为历史诊断，
 仅供研究，不构成投资建议。
 
-## JoinQuant 量化策略学习（新增）
+## 关联项目：JoinQuant 量化策略学习库
 
-本仓库同时收录了一套面向量化初学者的 **聚宽(JoinQuant) 策略学习库**，位于
-[`joinquant_strategies/`](joinquant_strategies/) 目录，包含 **10 个从简单到复杂的完整策略**：
+本仓库（`main` 分支）专注 **PandaAI 因子挖掘**。另有一个**独立的兄弟项目**——
+
+**「JoinQuant_Strategies 聚宽策略学习库」**，已拆分到本仓库的
+[`JoinQuant_Strategies` 分支](../../tree/JoinQuant_Strategies)（不再是本项目的子目录）。
+
+它面向量化初学者，收录 **10 个从简单到复杂的完整聚宽(JoinQuant)策略**：
 
 技术择时 → 单因子选股 → 多因子合成 → 因子中性化 → 因子 IC 加权 → 机器学习选股。
 
-每个策略都附带**完整可运行代码（strategies/）+ 逐行详解文档（docs/）**，涵盖
-思路讲解、算法结构、聚宽函数解析与基本面概念（PE/PB/ROE/IC/IR 等）。
+每个策略附带**完整可运行代码（strategies/）+ 逐行详解文档（docs/）**，涵盖思路讲解、
+算法结构、聚宽函数解析与基本面概念（PE/PB/ROE/IC/IR 等）。
 
-详见 [joinquant_strategies/README.md](joinquant_strategies/README.md)。
+> 详见该分支的 [`README`](../../tree/JoinQuant_Strategies)。与本 PandaAI 项目（因子挖掘/因子大赛）
+> 相互独立、互不影响。
 
 ## 环境
 
