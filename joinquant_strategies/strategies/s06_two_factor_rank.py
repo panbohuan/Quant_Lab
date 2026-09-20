@@ -14,10 +14,12 @@
   - pandas Series.rank()            因子值转"排名"
   - Series.intersection / 索引对齐  多因子数据对齐
   - 因子合成：排序打分法（Rank Sum）
+  - df.set_index('code')            【关键】把查询结果索引设为股票代码
 ================================================================================
 """
 from jqdata import *
 import pandas as pd
+from datetime import timedelta
 
 
 def initialize(context):
@@ -34,20 +36,44 @@ def initialize(context):
 
     g.stock_num = 30
     g.lookback = 60         # 动量回看期
+    g.min_list_days = 60    # 次新股过滤天数
 
     run_monthly(rebalance, 1, time='09:30')
+
+
+def filter_stocks(context, stock_list):
+    """统一的股票池过滤函数（剔除 ST/退市/停牌/次新/涨跌停）。"""
+    current_data = get_current_data()
+    yesterday = context.previous_date
+    result = []
+    for s in stock_list:
+        d = current_data[s]
+        if d.is_st or '退' in d.name:
+            continue
+        if d.paused:
+            continue
+        if d.day_open <= 0:
+            continue
+        info = get_security_info(s)
+        if info is None or (yesterday - info.start_date).days < g.min_list_days:
+            continue
+        if d.high_limit <= d.last_price or d.low_limit >= d.last_price:
+            continue
+        result.append(s)
+    return result
 
 
 def rebalance(context):
     # 1. 全市场股票池 + 过滤
     pool = get_all_securities(['stock'], date=context.current_dt.date()).index.tolist()
-    current_data = get_current_data()
-    pool = [s for s in pool
-            if not current_data[s].is_st and not current_data[s].paused]
+    pool = filter_stocks(context, pool)
+    if len(pool) == 0:
+        return
 
     # 2. 因子一：市值（越小越好），用 query 查询
     q = query(valuation.code, valuation.market_cap).filter(valuation.code.in_(pool))
     mkt_df = get_fundamentals(q, date=context.current_dt.date())
+    mkt_df = mkt_df.set_index('code')                    # 【关键】索引设为股票代码
     mkt_df = mkt_df[mkt_df['market_cap'] > 0]
 
     # 3. 因子二：动量（越大越好），用历史行情计算

@@ -13,9 +13,11 @@
   - indicator.roe          财务指标表·净资产收益率字段
   - indicator.roa          总资产收益率字段
   - indicator.gross_profit_margin  毛利率字段
+  - df.set_index('code')   【关键】把查询结果索引设为股票代码
 ================================================================================
 """
 from jqdata import *
+from datetime import timedelta
 
 
 def initialize(context):
@@ -31,20 +33,42 @@ def initialize(context):
     log.set_level('order', 'error')
 
     g.stock_num = 30
-    g.factor = 'roe'          # 可改为 'roa' 或 'gross_profit_margin'
+    g.factor = 'roe'            # 可改为 'roa' 或 'gross_profit_margin'
+    g.min_list_days = 60
 
     run_monthly(rebalance, 1, time='09:30')
+
+
+def filter_stocks(context, stock_list):
+    """统一的股票池过滤函数（剔除 ST/退市/停牌/次新/涨跌停）。"""
+    current_data = get_current_data()
+    yesterday = context.previous_date
+    result = []
+    for s in stock_list:
+        d = current_data[s]
+        if d.is_st or '退' in d.name:
+            continue
+        if d.paused:
+            continue
+        if d.day_open <= 0:
+            continue
+        info = get_security_info(s)
+        if info is None or (yesterday - info.start_date).days < g.min_list_days:
+            continue
+        if d.high_limit <= d.last_price or d.low_limit >= d.last_price:
+            continue
+        result.append(s)
+    return result
 
 
 def rebalance(context):
     # 1. 全市场股票池
     pool = get_all_securities(['stock'], date=context.current_dt.date()).index.tolist()
 
-    # 2. 过滤 ST、停牌
-    current_data = get_current_data()
-    pool = [s for s in pool
-            if not current_data[s].is_st
-            and not current_data[s].paused]
+    # 2. 过滤 ST、退市、停牌、次新、涨跌停
+    pool = filter_stocks(context, pool)
+    if len(pool) == 0:
+        return
 
     # 3. 查询质量因子
     q = query(
@@ -56,9 +80,10 @@ def rebalance(context):
         valuation.code.in_(pool)
     ).order_by(
         indicator.roe.desc()            # ROE 降序（越高越靠前）
-    ).limit(g.stock_num * 3)
+    )
 
     df = get_fundamentals(q, date=context.current_dt.date())
+    df = df.set_index('code')           # 【关键】索引设为股票代码
 
     # 4. 清洗：剔除缺失值（ROE 无正负过滤，但可剔除极端值，见文档）
     df = df.dropna(subset=[g.factor])

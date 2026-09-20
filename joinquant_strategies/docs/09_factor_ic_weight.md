@@ -39,8 +39,8 @@ $$IR = \frac{\overline{IC}}{\sigma(IC)}$$
 
 ```
 每月第1个交易日 → monthly(context)
-  ├─ 股票池：全市场 + 过滤
-  ├─ 计算当期因子：momentum / pb / roe / market_cap
+  ├─ 股票池：全市场 + 过滤 ST/退市/停牌/次新/涨跌停
+  ├─ 计算当期因子：momentum / pb / roe / market_cap（set_index('code')）
   ├─ 取当期收盘价 cur_price
   │
   ├─ 【算IC】用上一期快照：
@@ -56,6 +56,15 @@ $$IR = \frac{\overline{IC}}{\sigma(IC)}$$
 ```
 
 ## 四、函数详解
+
+### 4.0 `df.set_index('code')` —— 必须记住的关键一步
+
+`compute_factors` 里用 `get_fundamentals` 查 pb/roe/market_cap，返回的 DataFrame 索引是 0,1,2... 数字序号，**不是股票代码**。必须显式 `set_index('code')`，否则后续 `history(..., df.index.tolist(), ...)` 会传入错误代码、`df['momentum'] = momentum` 会索引不对齐（详见策略3的 3.3 节）。
+
+```python
+df = get_fundamentals(q, date=context.current_dt.date())
+df = df.set_index('code')     # 【关键】之后 index 才是股票代码
+```
 
 ### 4.1 `history(count, unit, field, security_list, df=True)` —— 批量取行情
 

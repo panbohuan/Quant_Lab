@@ -64,7 +64,7 @@ label = (fwd_ret > 0).astype(int)                        # 涨=1，跌=0（二�
 
 ```
 每隔 hold_days 个交易日 → check_and_trade → train_and_trade
-  ├─ 股票池：沪深300 + 过滤
+  ├─ 股票池：沪深300 + 过滤 ST/退市/停牌/次新/涨跌停
   ├─ 拉取近 2 年收盘价矩阵 close
   ├─ 遍历历史时点 i（每 step 天采样）：
   │     特征 = compute_features(close[:i+1])

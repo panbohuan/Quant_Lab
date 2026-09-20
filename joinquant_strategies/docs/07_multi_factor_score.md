@@ -50,8 +50,8 @@ df['score'] = (
 
 ```
 每月第1个交易日 → rebalance
-  ├─ 股票池：全市场 + 过滤 ST/停牌
-  ├─ 查询三因子：pb_ratio / market_cap / roe
+  ├─ 股票池：全市场 + 过滤 ST/退市/停牌/次新/涨跌停
+  ├─ 查询三因子：pb_ratio / market_cap / roe → set_index('code')
   ├─ 计算第四因子：momentum（60日涨幅）
   ├─ 合并成一张 DataFrame，dropna
   ├─ 逐因子 z-score 标准化
@@ -61,6 +61,15 @@ df['score'] = (
 ```
 
 ## 五、函数详解
+
+### 5.0 `df.set_index('code')` —— 必须记住的关键一步
+
+`get_fundamentals` 返回的 DataFrame 索引是 0,1,2... 数字序号，**不是股票代码**。必须显式 `set_index('code')`，否则后续 `df['momentum'] = pd.Series(momentum)` 会因索引不对齐而全部变成 NaN（详见策略3的 3.3 节）。
+
+```python
+df = get_fundamentals(q, date=context.current_dt.date())
+df = df.set_index('code')     # 【关键】之后 index 才是股票代码
+```
 
 ### 5.1 一次查询多张表
 

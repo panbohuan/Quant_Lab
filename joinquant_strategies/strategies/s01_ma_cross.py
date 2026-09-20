@@ -61,6 +61,11 @@ def trade(context):
     # attribute_history(标的, 数量, 周期, 字段, df=True) 返回 DataFrame
     closes = attribute_history(security, g.long + 1, '1d', 'close', df=True)['close']
 
+    # 数据不足保护：上市初期或回测起点历史K线不足 long+1 根时直接跳过，
+    # 避免切片越界报错（如 iloc[-20:] 在数据只有 5 根时会得到错误结果）
+    if len(closes) < g.long + 1:
+        return
+
     # 计算"今天"的均线（用最近 g.short / g.long 根K线）
     short_ma_now = closes.iloc[-g.short:].mean()   # 5日均线
     long_ma_now = closes.iloc[-g.long:].mean()     # 20日均线

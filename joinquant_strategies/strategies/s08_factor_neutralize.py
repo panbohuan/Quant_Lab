@@ -14,12 +14,14 @@
   - numpy.log                    市值取对数
   - pandas.get_dummies           行业哑变量编码
   - statsmodels OLS              截面回归
+  - df.set_index('code')         【关键】把查询结果索引设为股票代码
 ================================================================================
 """
 from jqdata import *
 import pandas as pd
 import numpy as np
 import statsmodels.api as sm
+from datetime import timedelta
 
 
 def initialize(context):
@@ -37,8 +39,31 @@ def initialize(context):
     g.stock_num = 30
     g.lookback = 60
     g.factor = 'momentum'     # 待中性化的因子：动量（可换成 roe/pb 等）
+    g.min_list_days = 60
 
     run_monthly(rebalance, 1, time='09:30')
+
+
+def filter_stocks(context, stock_list):
+    """统一的股票池过滤函数（剔除 ST/退市/停牌/次新/涨跌停）。"""
+    current_data = get_current_data()
+    yesterday = context.previous_date
+    result = []
+    for s in stock_list:
+        d = current_data[s]
+        if d.is_st or '退' in d.name:
+            continue
+        if d.paused:
+            continue
+        if d.day_open <= 0:
+            continue
+        info = get_security_info(s)
+        if info is None or (yesterday - info.start_date).days < g.min_list_days:
+            continue
+        if d.high_limit <= d.last_price or d.low_limit >= d.last_price:
+            continue
+        result.append(s)
+    return result
 
 
 def get_sw1_industry(codes, date):
@@ -67,13 +92,14 @@ def neutralize(factor, log_cap, industry):
 def rebalance(context):
     # 1. 全市场股票池 + 过滤
     pool = get_all_securities(['stock'], date=context.current_dt.date()).index.tolist()
-    current_data = get_current_data()
-    pool = [s for s in pool
-            if not current_data[s].is_st and not current_data[s].paused]
+    pool = filter_stocks(context, pool)
+    if len(pool) == 0:
+        return
 
     # 2. 查询市值（作为中性化变量之一）
     q = query(valuation.code, valuation.market_cap).filter(valuation.code.in_(pool))
     df = get_fundamentals(q, date=context.current_dt.date())
+    df = df.set_index('code')               # 【关键】索引设为股票代码
     df = df[df['market_cap'] > 0]
 
     # 3. 计算原始因子（动量）

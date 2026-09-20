@@ -25,14 +25,26 @@ $$\text{总市值} = \text{股价} \times \text{总股本}$$
 ```
 每月第1个交易日 → rebalance
   ├─ 股票池：全市场
-  ├─ 过滤 ST / 停牌
+  ├─ 过滤 ST / 退市 / 停牌 / 次新 / 涨跌停（filter_stocks）
   ├─ 查询 valuation.market_cap（总市值）
+  ├─ 【关键】df.set_index('code') 把索引设为股票代码
   ├─ 清洗 dropna + >0
   ├─ 按市值升序取前 30 只
   └─ 换仓等权
 ```
 
 ## 三、函数详解
+
+### 3.0 `df.set_index('code')` —— 必须记住的关键一步
+
+同策略3，`get_fundamentals` 返回的 DataFrame 索引是 0,1,2... 数字序号，**不是股票代码**。必须显式 `set_index('code')` 把"code"列提升为索引，否则 `df.index.tolist()` 拿到的是数字，导致下单失败、策略无法交易。
+
+```python
+df = get_fundamentals(q, date=context.current_dt.date())
+df = df.set_index('code')     # 【关键】之后 df.index 才是股票代码
+```
+
+> 这是本次更新修复的核心 bug 之一，所有用到 `get_fundamentals` 的策略都遵循这一写法。
 
 ### 3.1 总市值 vs 流通市值
 

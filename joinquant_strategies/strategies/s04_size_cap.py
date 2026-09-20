@@ -10,12 +10,14 @@
           每个调仓日按市值升序排序，买入市值最小的 K 只，等权持有。
 
 本策略新增的关键函数（聚宽）：
-  - valuation.market_cap            总市值字段
-  - valuation.circulating_market_cap 流通市值字段
+  - valuation.market_cap            总市值字段（单位：亿元）
+  - valuation.circulating_market_cap 流通市值字段（单位：亿元）
   - get_all_securities(['stock'])   获取全市场股票列表
+  - df.set_index('code')            【关键】把查询结果索引设为股票代码
 ================================================================================
 """
 from jqdata import *
+from datetime import timedelta
 
 
 def initialize(context):
@@ -31,20 +33,42 @@ def initialize(context):
     log.set_level('order', 'error')
 
     g.stock_num = 30
-    g.cap_field = 'market_cap'   # 可改为 'circulating_market_cap' 用流通市值
+    g.cap_field = 'market_cap'      # 可改为 'circulating_market_cap' 用流通市值
+    g.min_list_days = 60
 
     run_monthly(rebalance, 1, time='09:30')
+
+
+def filter_stocks(context, stock_list):
+    """统一的股票池过滤函数（剔除 ST/退市/停牌/次新/涨跌停）。"""
+    current_data = get_current_data()
+    yesterday = context.previous_date
+    result = []
+    for s in stock_list:
+        d = current_data[s]
+        if d.is_st or '退' in d.name:
+            continue
+        if d.paused:
+            continue
+        if d.day_open <= 0:
+            continue
+        info = get_security_info(s)
+        if info is None or (yesterday - info.start_date).days < g.min_list_days:
+            continue
+        if d.high_limit <= d.last_price or d.low_limit >= d.last_price:
+            continue
+        result.append(s)
+    return result
 
 
 def rebalance(context):
     # 1. 全市场股票池
     pool = get_all_securities(['stock'], date=context.current_dt.date()).index.tolist()
 
-    # 2. 过滤 ST、停牌
-    current_data = get_current_data()
-    pool = [s for s in pool
-            if not current_data[s].is_st
-            and not current_data[s].paused]
+    # 2. 过滤 ST、退市、停牌、次新、涨跌停
+    pool = filter_stocks(context, pool)
+    if len(pool) == 0:
+        return
 
     # 3. 查询市值因子
     q = query(
@@ -55,9 +79,10 @@ def rebalance(context):
         valuation.code.in_(pool)
     ).order_by(
         valuation.market_cap.asc()          # 市值升序（越小越靠前）
-    ).limit(g.stock_num * 3)
+    )
 
     df = get_fundamentals(q, date=context.current_dt.date())
+    df = df.set_index('code')               # 【关键】索引设为股票代码
 
     # 4. 清洗：剔除缺失与异常市值
     df = df.dropna(subset=[g.cap_field])

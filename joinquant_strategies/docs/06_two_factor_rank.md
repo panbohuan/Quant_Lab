@@ -35,8 +35,8 @@
 
 ```
 每月第1个交易日 → rebalance
-  ├─ 股票池：全市场 + 过滤 ST/停牌
-  ├─ 因子1 市值：query(valuation.market_cap)
+  ├─ 股票池：全市场 + 过滤 ST/退市/停牌/次新/涨跌停
+  ├─ 因子1 市值：query(valuation.market_cap) → set_index('code')
   ├─ 因子2 动量：attribute_history 算 60 日涨幅
   ├─ 对齐：取两因子都有效的股票交集 codes
   ├─ 排名：动量降序 rank + 市值升序 rank
@@ -46,6 +46,15 @@
 ```
 
 ## 四、函数详解
+
+### 4.0 `df.set_index('code')` —— 必须记住的关键一步
+
+本策略用 `get_fundamentals` 查市值，返回的 DataFrame 索引是 0,1,2... 数字序号，**不是股票代码**。必须显式 `set_index('code')`，否则后续 `mkt_df.index.intersection(mom.index)` 和 `mkt_df.loc[codes, ...]` 都会因索引不对齐而出错（详见策略3的 3.3 节）。
+
+```python
+mkt_df = get_fundamentals(q, date=context.current_dt.date())
+mkt_df = mkt_df.set_index('code')     # 【关键】之后 index 才是股票代码
+```
 
 ### 4.1 `Series.rank(ascending=...)` —— 排名
 

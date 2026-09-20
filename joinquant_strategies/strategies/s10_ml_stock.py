@@ -19,6 +19,7 @@ from jqdata import *
 import pandas as pd
 import numpy as np
 from sklearn.ensemble import RandomForestClassifier
+from datetime import timedelta
 
 
 def initialize(context):
@@ -40,9 +41,32 @@ def initialize(context):
     g.feature_days = 65          # 特征所需最长回看（60日动量+缓冲）
     g.train_days = 500           # 训练窗口：约2年交易日
     g.sample_step = 10           # 每隔10个交易日采样一个训练样本
+    g.min_list_days = 60         # 次新股过滤天数
     g.last_trade = context.current_dt.date()
 
     run_daily(check_and_trade, time='09:30')
+
+
+def filter_stocks(context, stock_list):
+    """统一的股票池过滤函数（剔除 ST/退市/停牌/次新/涨跌停）。"""
+    current_data = get_current_data()
+    yesterday = context.previous_date
+    result = []
+    for s in stock_list:
+        d = current_data[s]
+        if d.is_st or '退' in d.name:
+            continue
+        if d.paused:
+            continue
+        if d.day_open <= 0:
+            continue
+        info = get_security_info(s)
+        if info is None or (yesterday - info.start_date).days < g.min_list_days:
+            continue
+        if d.high_limit <= d.last_price or d.low_limit >= d.last_price:
+            continue
+        result.append(s)
+    return result
 
 
 def check_and_trade(context):
@@ -72,9 +96,9 @@ def compute_features(close):
 def train_and_trade(context):
     # 1. 股票池 + 过滤
     pool = get_index_stocks(g.universe)
-    current_data = get_current_data()
-    pool = [s for s in pool
-            if not current_data[s].is_st and not current_data[s].paused]
+    pool = filter_stocks(context, pool)
+    if len(pool) == 0:
+        return
 
     # 2. 一次性拉取足够长的收盘价历史（训练窗口 + 特征回看 + 标签未来）
     total = g.train_days + g.feature_days + g.label_horizon + 10
@@ -107,6 +131,8 @@ def train_and_trade(context):
     cur['proba'] = model.predict_proba(cur)[:, 1]      # 第2列 = 正类（上涨）概率
 
     target = cur.sort_values('proba', ascending=False).index[:g.stock_num].tolist()
+    if not target:
+        return
 
     # 6. 换仓
     for s in list(context.portfolio.positions):

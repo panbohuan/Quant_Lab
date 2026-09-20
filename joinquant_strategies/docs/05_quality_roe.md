@@ -44,14 +44,24 @@ $$ROE = \underbrace{\frac{净利润}{营收}}_{净利率} \times \underbrace{\fr
 ```
 每月第1个交易日 → rebalance
   ├─ 股票池：全市场
-  ├─ 过滤 ST / 停牌
+  ├─ 过滤 ST / 退市 / 停牌 / 次新 / 涨跌停（filter_stocks）
   ├─ 查询 indicator.roe / roa / gross_profit_margin
+  ├─ 【关键】df.set_index('code') 把索引设为股票代码
   ├─ 清洗 dropna
   ├─ 按 ROE 降序取前 30 只
   └─ 换仓等权
 ```
 
 ## 三、函数详解
+
+### 3.0 `df.set_index('code')` —— 必须记住的关键一步
+
+`get_fundamentals` 返回的 DataFrame 索引是 0,1,2... 数字序号，**不是股票代码**。必须显式 `set_index('code')`，否则 `df.index.tolist()` 拿到的是数字，导致无法下单交易（详见策略3的 3.3 节）。
+
+```python
+df = get_fundamentals(q, date=context.current_dt.date())
+df = df.set_index('code')     # 【关键】之后 df.index 才是股票代码
+```
 
 ### 3.1 `indicator` 表与季度数据
 

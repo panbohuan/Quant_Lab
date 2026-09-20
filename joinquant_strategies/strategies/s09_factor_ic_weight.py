@@ -13,11 +13,13 @@
   - history(count, unit, field, security_list)   批量取行情（向量化）
   - IC / IR 概念（因子与未来收益的相关性）
   - 滚动窗口动态权重
+  - df.set_index('code')                         【关键】把查询结果索引设为股票代码
 ================================================================================
 """
 from jqdata import *
 import pandas as pd
 import numpy as np
+from datetime import timedelta
 
 
 def initialize(context):
@@ -35,6 +37,7 @@ def initialize(context):
     g.stock_num = 30
     g.lookback = 60            # 动量回看期
     g.ic_window = 12           # 滚动IC窗口（过去12期）
+    g.min_list_days = 60
 
     # 因子列表与方向（+1 越大越好，-1 越小越好）
     g.factor_names = ['momentum', 'pb', 'roe', 'market_cap']
@@ -47,12 +50,32 @@ def initialize(context):
     run_monthly(monthly, 1, time='09:30')
 
 
-def get_universe(context):
-    """股票池：全市场 + 过滤 ST/停牌。"""
-    pool = get_all_securities(['stock'], date=context.current_dt.date()).index.tolist()
+def filter_stocks(context, stock_list):
+    """统一的股票池过滤函数（剔除 ST/退市/停牌/次新/涨跌停）。"""
     current_data = get_current_data()
-    return [s for s in pool
-            if not current_data[s].is_st and not current_data[s].paused]
+    yesterday = context.previous_date
+    result = []
+    for s in stock_list:
+        d = current_data[s]
+        if d.is_st or '退' in d.name:
+            continue
+        if d.paused:
+            continue
+        if d.day_open <= 0:
+            continue
+        info = get_security_info(s)
+        if info is None or (yesterday - info.start_date).days < g.min_list_days:
+            continue
+        if d.high_limit <= d.last_price or d.low_limit >= d.last_price:
+            continue
+        result.append(s)
+    return result
+
+
+def get_universe(context):
+    """股票池：全市场 + 过滤 ST/停牌/退市/次新/涨跌停。"""
+    pool = get_all_securities(['stock'], date=context.current_dt.date()).index.tolist()
+    return filter_stocks(context, pool)
 
 
 def compute_factors(codes, context):
@@ -62,6 +85,7 @@ def compute_factors(codes, context):
         valuation.code, valuation.pb_ratio, valuation.market_cap, indicator.roe
     ).filter(valuation.code.in_(codes))
     df = get_fundamentals(q, date=context.current_dt.date())
+    df = df.set_index('code')              # 【关键】索引设为股票代码
     df = df.dropna()
     df = df[df['pb_ratio'] > 0]
 
@@ -83,9 +107,13 @@ def get_last_close(codes):
 def monthly(context):
     # 1. 股票池
     codes = get_universe(context)
+    if len(codes) == 0:
+        return
 
     # 2. 计算当期因子值
     factors = compute_factors(codes, context)
+    if len(factors) < g.stock_num:
+        return
     cur_price = get_last_close(factors.index.tolist())
 
     # 3. 用上一期快照计算各因子的 IC（因子值与未来一期收益的相关性）

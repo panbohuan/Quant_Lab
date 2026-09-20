@@ -16,11 +16,13 @@
   - z-score 标准化（(x-均值)/标准差）
   - 因子方向处理（正负号）
   - 多因子加权合成
+  - df.set_index('code')            【关键】把查询结果索引设为股票代码
 ================================================================================
 """
 from jqdata import *
 import pandas as pd
 import numpy as np
+from datetime import timedelta
 
 
 def initialize(context):
@@ -37,21 +39,48 @@ def initialize(context):
 
     g.stock_num = 30
     g.lookback = 60          # 动量回看期
+    g.min_list_days = 60
 
     run_monthly(rebalance, 1, time='09:30')
 
 
+def filter_stocks(context, stock_list):
+    """统一的股票池过滤函数（剔除 ST/退市/停牌/次新/涨跌停）。"""
+    current_data = get_current_data()
+    yesterday = context.previous_date
+    result = []
+    for s in stock_list:
+        d = current_data[s]
+        if d.is_st or '退' in d.name:
+            continue
+        if d.paused:
+            continue
+        if d.day_open <= 0:
+            continue
+        info = get_security_info(s)
+        if info is None or (yesterday - info.start_date).days < g.min_list_days:
+            continue
+        if d.high_limit <= d.last_price or d.low_limit >= d.last_price:
+            continue
+        result.append(s)
+    return result
+
+
 def zscore(series):
-    """z-score 标准化：把因子值转换为均值为0、标准差为1的分布。"""
+    """z-score 标准化：把因子值转换为均值为0、标准差为1的分布。
+
+    公式：z = (x - mean) / std
+    分母加 1e-12 防止标准差为 0 时除零报错。
+    """
     return (series - series.mean()) / (series.std() + 1e-12)
 
 
 def rebalance(context):
     # 1. 全市场股票池 + 过滤
     pool = get_all_securities(['stock'], date=context.current_dt.date()).index.tolist()
-    current_data = get_current_data()
-    pool = [s for s in pool
-            if not current_data[s].is_st and not current_data[s].paused]
+    pool = filter_stocks(context, pool)
+    if len(pool) == 0:
+        return
 
     # 2. 查询基本面因子（估值 + 质量 + 规模）
     q = query(
@@ -62,8 +91,9 @@ def rebalance(context):
     ).filter(valuation.code.in_(pool))
 
     df = get_fundamentals(q, date=context.current_dt.date())
-    df = df.dropna()                            # 剔除缺失
-    df = df[df['pb_ratio'] > 0]                 # 剔除负PB
+    df = df.set_index('code')                     # 【关键】索引设为股票代码
+    df = df.dropna()                              # 剔除缺失
+    df = df[df['pb_ratio'] > 0]                   # 剔除负PB
 
     # 3. 计算动量因子（越高越好）
     momentum = {}
