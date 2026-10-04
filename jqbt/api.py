@@ -131,6 +131,11 @@ def order_target_value(security, value):
 from . import data as _data
 
 
+# attribute_history 内存缓存：回测中同一 (标的, 数量, 截至日) 只拉一次。
+# 发现阶段 + 正式回测会重复调用相同数据，缓存可省一半数据额度与时间。
+_attr_history_cache = {}
+
+
 def attribute_history(security, count, unit='1d', fields=('close',),
                       skip_paused=True, df=True, fq='pre'):
     """
@@ -142,8 +147,19 @@ def attribute_history(security, count, unit='1d', fields=('close',),
         fields = [fields]
     else:
         fields = list(fields)
-    return _data.get_price(security, frequency=unit, fields=fields,
-                           count=count, fq=fq, skip_paused=skip_paused)
+    anchor = _data.get_current_date()
+    if anchor is not None:
+        key = (security, int(count), unit, tuple(fields), skip_paused, fq, str(anchor))
+        cached = _attr_history_cache.get(key)
+        if cached is not None:
+            return cached.copy()
+    result = _data.get_price(security, frequency=unit, fields=fields,
+                             count=count, fq=fq, skip_paused=skip_paused)
+    if anchor is not None:
+        if len(_attr_history_cache) > 80000:  # 内存保护：防止极端场景无限膨胀
+            _attr_history_cache.clear()
+        _attr_history_cache[key] = result
+    return result.copy() if result is not None else result
 
 
 def get_price(security, start_date=None, end_date=None, frequency='daily',

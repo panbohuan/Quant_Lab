@@ -107,8 +107,10 @@ def login(phone=None, password=None):
         )
     if _auth_state["logged_in"] and _auth_state["phone"] == phone:
         return
-    ok = jqdatasdk.auth(phone, password)
-    if not ok:
+    # 注意：jqdatasdk.auth() 成功时返回 None（打印 "auth success"），失败时抛异常，
+    # 不能用返回值判断。改用 is_auth() 判断是否真正登录成功。
+    jqdatasdk.auth(phone, password)
+    if not jqdatasdk.is_auth():
         raise RuntimeError("聚宽登录失败，请检查账号/密码是否正确。")
     _auth_state["logged_in"] = True
     _auth_state["phone"] = phone
@@ -149,6 +151,13 @@ def get_price(security, start_date=None, end_date=None, frequency='daily',
         start_date = start_date.strftime('%Y-%m-%d')
     if end_date is not None and isinstance(end_date, (dt.date, dt.datetime)):
         end_date = end_date.strftime('%Y-%m-%d')
+    # 关键修复：回测中若只用 count 取"最近 N 条"而未指定 end_date，
+    # jqdatasdk 会回溯到"今天"，可能越过账号的数据权限上界（报权限错误），
+    # 也可能引入未来数据（未来函数）。这里自动用回测锚点 _current_date 兜底，
+    # 使 count 查询锚定到当前回测日，既避免权限越界，又保证回测无未来函数。
+    if count is not None and end_date is None and _current_date is not None:
+        end_date = _current_date.strftime('%Y-%m-%d') if isinstance(
+            _current_date, (dt.date, dt.datetime)) else str(_current_date)
     df = jq.get_price(security, start_date=start_date, end_date=end_date,
                       frequency=frequency, fields=fields,
                       skip_paused=skip_paused, fq=fq, count=count)
@@ -172,6 +181,20 @@ def get_trade_days(start_date=None, end_date=None, count=None):
     return [d if isinstance(d, dt.date) else pd.Timestamp(d).date() for d in days]
 
 
+def _anchor(date):
+    """date 兜底：未显式传日期时，用回测锚点日代替"今天"。
+
+    聚宽服务端对 date=None 的接口（get_index_stocks / get_all_securities 等）
+    默认取当前日期；而免费账号的数据权限窗口通常不含"今天"，会报权限错误，
+    回测中也属于未来数据。因此统一用回测锚点 _current_date 代替。
+    """
+    if date is None and _current_date is not None:
+        if isinstance(_current_date, (dt.date, dt.datetime)):
+            return _current_date.strftime('%Y-%m-%d')
+        return str(_current_date)
+    return date
+
+
 # ============================ 标的池 / 成分股 ============================
 
 def get_all_securities(types=None, date=None):
@@ -179,6 +202,7 @@ def get_all_securities(types=None, date=None):
     jq = _ensure_auth()
     if types is None:
         types = []
+    date = _anchor(date)
     if date is not None and isinstance(date, (dt.date, dt.datetime)):
         date = date.strftime('%Y-%m-%d')
     return jq.get_all_securities(types=types, date=date)
@@ -187,6 +211,7 @@ def get_all_securities(types=None, date=None):
 def get_index_stocks(index_symbol, date=None):
     """获取指数成分股，返回 list[str]"""
     jq = _ensure_auth()
+    date = _anchor(date)
     if date is not None and isinstance(date, (dt.date, dt.datetime)):
         date = date.strftime('%Y-%m-%d')
     return jq.get_index_stocks(index_symbol, date=date)
@@ -195,6 +220,7 @@ def get_index_stocks(index_symbol, date=None):
 def get_industry(security=None, date=None):
     """获取行业分类。返回 DataFrame 或 dict（取决于 jqdatasdk 版本）"""
     jq = _ensure_auth()
+    date = _anchor(date)
     if date is not None and isinstance(date, (dt.date, dt.datetime)):
         date = date.strftime('%Y-%m-%d')
     return jq.get_industry(security, date=date)
@@ -308,6 +334,7 @@ def get_industries(name='sw_l1', date=None):
     本地通过 jqdatasdk 的 get_industries 接口（若不可用则返回空结构）。
     """
     import jqdatasdk
+    date = _anchor(date)
     if date is not None and isinstance(date, (dt.date, dt.datetime)):
         date = date.strftime('%Y-%m-%d')
     try:
