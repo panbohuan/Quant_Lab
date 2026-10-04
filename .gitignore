@@ -1,0 +1,33 @@
+# Python 缓存
+__pycache__/
+*.pyc
+*.pyo
+
+# 本地数据缓存（jqbt 引擎拉取的行情缓存）
+.cache/
+
+# 回测结果图片
+*_result.png
+s01_result.png
+
+# 临时测试脚本
+_test_engine.py
+_verify_all.py
+_refactor_strategies.py
+
+# 账号配置（含真实密码，切勿提交）
+config.py
+
+# 虚拟环境
+venv/
+.venv/
+env/
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# 系统
+.DS_Store
+Thumbs.db

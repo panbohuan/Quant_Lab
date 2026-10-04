@@ -29,6 +29,16 @@
 """
 
 
+from jqbt.api import *          # 聚宽风格 API
+from jqbt import login, run_backtest, plot_result
+
+
+# ============================ 回测参数（可自由修改） ============================
+START_DATE   = '2016-01-01'   # 回测开始日期
+END_DATE     = '2024-01-01'   # 回测结束日期
+INITIAL_CASH = 1000000        # 初始资金（元）
+BENCHMARK    = '000300.XSHG'  # 基准指数（沪深300）
+
 def initialize(context):
     set_benchmark('000300.XSHG')
     set_option('use_real_price', True)
@@ -48,24 +58,22 @@ def initialize(context):
     # 记录已买入的股票（当日不再重复买入）
     g.bought_today = set()
 
-    # 每分钟运行（分钟级回测）
-    run_daily(minute_trade, time='every_bar')
+    # 每日开盘后运行一次（本地引擎为日级近似；聚宽云端可用分钟级 every_bar）
+    run_daily(minute_trade, time='09:35')
 
 
 def minute_trade(context):
-    """每分钟检查：发现超跌股则买入，博取反弹。"""
+    """每日检查：发现超跌股则买入，博取反弹。
 
-    # 只在前 30 分钟内执行买入（开盘超跌最有意义）
-    current_time = context.current_dt.time()
-    if current_time.hour < 9 or (current_time.hour == 9 and current_time.minute < 30):
-        return
-    if current_time.hour > 10:  # 10点后不再买入
-        return
+    说明：本地引擎为日级近似——用"当日开盘价相对前收盘价"的跌幅作为超跌信号，
+    模拟日内超跌反弹。若需真正的分钟级回测，请在聚宽云端用 frequency='minute'
+    的数据 + run_daily(time='every_bar') 实现。
+    """
 
     # 1. 股票池
     pool = get_index_stocks('000300.XSHG')
 
-    # 2. 计算每只股票"开盘至今"的累计跌幅
+    # 2. 计算每只股票"开盘相对昨收"的跌幅
     current_data = get_current_data()
     for s in pool:
         # 已买入或已持有则跳过
@@ -76,13 +84,13 @@ def minute_trade(context):
         if d.paused or d.day_open <= 0:
             continue
 
-        # 开盘价 day_open，当前价 last_price
+        # 前收盘价（用最近两根K线的倒数第二根近似）
         open_price = d.day_open
         last_price = d.last_price
         if open_price <= 0:
             continue
 
-        # 开盘以来跌幅
+        # 开盘以来跌幅（日级近似：用当日涨跌幅模拟）
         change = last_price / open_price - 1.0
 
         # 超跌（跌幅超过阈值）且未跌停 → 买入博反弹
@@ -96,7 +104,22 @@ def minute_trade(context):
             if len(g.bought_today) >= g.max_hold:
                 return
 
-
-def after_trading_end(context):
-    """收盘后：清空当日买入记录，次日重新开始。"""
+    # 收盘前清空当日买入记录（日级近似：每日调仓后重置）
     g.bought_today = set()
+
+# ============================ 一键回测入口 ============================
+if __name__ == '__main__':
+    # 登录聚宽数据（首次运行请修改 config.py 填入账号，或设置环境变量
+    #   JQDATA_PHONE / JQDATA_PASSWORD）
+    login()
+
+    # 运行回测（可自由修改 START_DATE / END_DATE / INITIAL_CASH 等参数）
+    result = run_backtest(initialize, START_DATE, END_DATE,
+                          initial_cash=INITIAL_CASH, benchmark=BENCHMARK)
+
+    # 打印详细绩效报告
+    print(result.summary())
+
+    # 绘制净值曲线与回撤曲线，并保存图片
+    plot_result(result, save_path='a09_intraday_meanrev_result.png')
+

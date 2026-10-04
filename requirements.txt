@@ -1,0 +1,27 @@
+# Quant_Lab 依赖清单（本地回测环境）
+# 安装方式：pip install -r requirements.txt
+#
+# 说明：
+#   - 核心依赖：jqdatasdk（聚宽官方数据 SDK）+ pandas + numpy + matplotlib
+#   - 机器学习策略（s10 / a08）需要 scikit-learn
+#   - 因子中性化策略（s08）需要 statsmodels
+#   - 深度学习（学习文档涉及）可选安装 tensorflow / xgboost
+
+# ===== 核心（必装） =====
+jqdatasdk>=1.8.0        # 聚宽官方数据 SDK（本地拉取行情/财务数据）
+pandas>=1.5.0           # 数据处理
+numpy>=1.21.0           # 数值计算
+matplotlib>=3.5.0       # 图表绘制
+
+# ===== 机器学习策略（s10 / a08 需要） =====
+scikit-learn>=1.0.0     # 随机森林等 ML 模型
+
+# ===== 因子中性化策略（s08 需要） =====
+statsmodels>=0.13.0     # 截面回归（因子中性化）
+
+# ===== 可选（学习文档涉及，按需安装） =====
+# xgboost>=1.7.0          # 梯度提升（库详解文档）
+# tensorflow>=2.10.0      # 深度学习框架（库详解文档）
+# scipy>=1.9.0            # 科学计算（库详解文档）
+# chromadb>=0.3.0         # 向量数据库（RAG，库详解文档）
+# tiktoken>=0.4.0         # OpenAI 分词器（库详解文档）

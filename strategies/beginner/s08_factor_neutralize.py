@@ -17,12 +17,21 @@
   - df.set_index('code')         【关键】把查询结果索引设为股票代码
 ================================================================================
 """
-from jqdata import *
+from jqbt import login, run_backtest, plot_result
+from jqbt.api import *
 import pandas as pd
 import numpy as np
 import statsmodels.api as sm
 from datetime import timedelta
 
+
+
+
+# ============================ 回测参数（可自由修改） ============================
+START_DATE   = '2016-01-01'   # 回测开始日期
+END_DATE     = '2024-01-01'   # 回测结束日期
+INITIAL_CASH = 1000000        # 初始资金（元）
+BENCHMARK    = '000300.XSHG'  # 基准指数（沪深300）
 
 def initialize(context):
     set_benchmark('000300.XSHG')
@@ -138,3 +147,20 @@ def rebalance(context):
     per_value = context.portfolio.total_value / len(target)
     for s in target:
         order_target_value(s, per_value)
+
+# ============================ 一键回测入口 ============================
+if __name__ == '__main__':
+    # 登录聚宽数据（首次运行请修改 config.py 填入账号，或设置环境变量
+    #   JQDATA_PHONE / JQDATA_PASSWORD）
+    login()
+
+    # 运行回测（可自由修改 START_DATE / END_DATE / INITIAL_CASH 等参数）
+    result = run_backtest(initialize, START_DATE, END_DATE,
+                          initial_cash=INITIAL_CASH, benchmark=BENCHMARK)
+
+    # 打印详细绩效报告
+    print(result.summary())
+
+    # 绘制净值曲线与回撤曲线，并保存图片
+    plot_result(result, save_path='s08_factor_neutralize_result.png')
+

@@ -8,7 +8,12 @@
 核心思路：短期均线上穿长期均线（金叉）→ 买入；下穿（死叉）→ 卖出。
 交易标的：沪深300ETF（510300.XSHG）
 
-本策略用到的关键函数（聚宽）：
+【本地一键回测】在 PyCharm 中直接运行本文件即可回测，可自由修改：
+  - START_DATE / END_DATE  回测起止日期
+  - INITIAL_CASH           初始资金
+  - g.short / g.long       均线周期参数
+
+本策略用到的关键函数（聚宽风格，由 jqbt 本地引擎提供）：
   - initialize(context)            策略初始化，注册定时任务与参数
   - set_benchmark / set_option     设定基准与真实价格模式
   - set_order_cost / set_slippage  设定手续费与滑点
@@ -18,15 +23,23 @@
   - log.info(...)                  输出日志（调试用）
 ================================================================================
 """
+from jqbt.api import *          # 聚宽风格 API：g / log / run_daily / attribute_history / order_target_value 等
+from jqbt import login, run_backtest, plot_result   # 本地回测引擎
+
+
+# ============================ 回测参数（可自由修改） ============================
+START_DATE = '2016-01-01'   # 回测开始日期
+END_DATE   = '2026-01-01'   # 回测结束日期
+INITIAL_CASH = 1000000      # 初始资金（元）
+BENCHMARK  = '000300.XSHG'  # 基准指数（沪深300）
 
 
 def initialize(context):
     """初始化函数：回测开始时只运行一次，用于注册配置和定时任务。"""
     # 1. 设定基准：策略收益会与该基准对比（沪深300指数）
-    set_benchmark('000300.XSHG')
+    set_benchmark(BENCHMARK)
 
     # 2. 开启动态复权（真实价格模式），让回测价格更贴近实盘
-    #    use_real_price=True 表示使用真实价格（前复权动态调整）
     set_option('use_real_price', True)
 
     # 3. 设定交易成本：
@@ -58,25 +71,22 @@ def trade(context):
     security = g.security
 
     # 获取过去 g.long+1 个交易日的收盘价（均为已经收盘的完整K线）
-    # attribute_history(标的, 数量, 周期, 字段, df=True) 返回 DataFrame
     closes = attribute_history(security, g.long + 1, '1d', 'close', df=True)['close']
 
-    # 数据不足保护：上市初期或回测起点历史K线不足 long+1 根时直接跳过，
-    # 避免切片越界报错（如 iloc[-20:] 在数据只有 5 根时会得到错误结果）
+    # 数据不足保护
     if len(closes) < g.long + 1:
         return
 
-    # 计算"今天"的均线（用最近 g.short / g.long 根K线）
+    # 计算"今天"的均线
     short_ma_now = closes.iloc[-g.short:].mean()   # 5日均线
     long_ma_now = closes.iloc[-g.long:].mean()     # 20日均线
 
-    # 计算"昨天"的均线（整体往前平移一根K线），用于判断是否发生交叉
+    # 计算"昨天"的均线（判断是否发生交叉）
     short_ma_prev = closes.iloc[-g.short - 1:-1].mean()
     long_ma_prev = closes.iloc[-g.long - 1:-1].mean()
 
-    # 金叉：短均线从下方上穿长均线 → 满仓买入
+    # 金叉：短均线上穿长均线 → 满仓买入
     if short_ma_now > long_ma_now and short_ma_prev <= long_ma_prev:
-        # 用总资产的 95% 买入（预留手续费空间，避免现金不足）
         order_target_value(security, context.portfolio.total_value * 0.95)
         log.info('金叉买入 %s', security)
 
@@ -84,3 +94,19 @@ def trade(context):
     elif short_ma_now < long_ma_now and short_ma_prev >= long_ma_prev:
         order_target_value(security, 0)
         log.info('死叉卖出 %s', security)
+
+
+# ============================ 一键回测入口 ============================
+if __name__ == '__main__':
+    # 登录聚宽数据（首次运行请先修改 config.py 或设置环境变量）
+    login()
+
+    # 运行回测
+    result = run_backtest(initialize, START_DATE, END_DATE,
+                          initial_cash=INITIAL_CASH, benchmark=BENCHMARK)
+
+    # 打印详细绩效报告
+    print(result.summary())
+
+    # 绘制净值曲线与回撤曲线
+    plot_result(result, save_path='s01_result.png')

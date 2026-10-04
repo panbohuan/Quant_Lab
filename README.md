@@ -2,7 +2,7 @@
 
 > 一个系统、完整的量化投资学习仓库，帮助你从零入门聚宽（JoinQuant）量化策略，并掌握机器学习、AI 大模型、区块链等前沿技术与量化的结合。**盈利不是目的，目的是框架本身的学习和熟悉。**
 
-> **v3.0 更新（2026-09）**：仓库定位全面升级为「面向量化初学者的入门指导库」。重构 `learning/` 学习专区为四大板块（区块链 / 库详解 / 聚宽函数详解 / 机器学习），机器学习指南大幅扩充为《从 AI 到大模型到量化实战》完全指南，新增全部第三方库的系统详解；原 PandaAI 因子挖掘内容已移除，`JoinQuant_Strategies` 旧分支已删除，仓库统一收敛到 `main` 单一分支。
+> **v3.1.0 更新（2026-09）**：20 个策略全部**本地可一键回测**。自研轻量回测引擎 `jqbt`，封装聚宽风格 API（`initialize`/`run_daily`/`attribute_history`/`get_fundamentals`/`order_target_value` 等），底层接聚宽官方 `jqdatasdk` 拉取真实数据，支持调参、调时间、调本金、调试数据、详细绩效统计与图表可视化。在 PyCharm + 虚拟环境中即可运行，无需再复制粘贴到聚宽网页。
 
 ---
 
@@ -27,7 +27,15 @@
 ```
 Quant_Lab/
 ├── README.md                  # 本文件：总览与学习指南
-├── strategies/                # 策略代码（可直接粘贴到聚宽运行）
+├── requirements.txt           # 依赖清单（pip install -r requirements.txt）
+├── config.py                  # 聚宽账号配置（已 gitignore，勿提交真实密码）
+├── jqbt/                      # 自研本地回测引擎（聚宽风格 API 兼容层）
+│   ├── __init__.py            # 统一导出（run_backtest / login / plot_result）
+│   ├── data.py                # jqdatasdk 数据适配层（登录/拉数/缓存）
+│   ├── api.py                 # 聚宽风格 API（g/context/log/order_*/get_*）
+│   ├── engine.py              # 回测引擎核心（调度/撮合/持仓/绩效）
+│   └── metrics.py             # 绩效可视化（净值曲线/回撤曲线）
+├── strategies/                # 策略代码（本地 PyCharm 一键回测）
 │   ├── beginner/              # 入门篇：10 个基础策略
 │   │   ├── s01_ma_cross.py           双均线趋势跟踪（技术择时）
 │   │   ├── s02_momentum.py           单因子·动量选股
@@ -51,6 +59,7 @@ Quant_Lab/
 │       ├── a09_intraday_meanrev.py      日内均值回归（日内交易）
 │       └── a10_sentiment.py             舆情情绪（另类数据）
 └── docs/
+    ├── 本地回测使用指南.md     # 环境安装 + 一键回测 + 引擎说明（v3.1.0 新增）
     ├── beginner/              # 入门篇：10 篇策略详解
     │   └── 01_ma_cross.md … 10_ml_stock.md
     ├── advanced/              # 进阶篇：10 篇策略详解
@@ -139,24 +148,39 @@ Quant_Lab/
 |------|------|--------|
 | `机器学习完全指南.md` | 从 AI 到大模型到量化实战（21章：AI全景/LLM/Agent/核心概念/sklearn/金融特殊性/模型/深度学习/强化学习/评估/实战/陷阱/术语表/资源 + AI基础概念/ReAct/回归/聚类/PCA + 考点速记） | 想系统理解 AI 与量化关系的新手 |
 
-## 六、环境准备
+## 六、环境准备（本地 PyCharm 一键回测）
 
-1. 注册 [聚宽 JoinQuant](https://www.joinquant.com) 账号（免费）；
-2. 进入「策略研究 / 我的策略」→「新建策略」；
-3. 把 `strategies/` 里的 `.py` 代码**整体复制粘贴**到代码编辑区；
-4. 设置回测参数（见下），点击「编译运行」。
+自 v3.1.0 起，20 个策略都可在本地 PyCharm 中**一键回测**，无需再复制粘贴到聚宽网页。环境准备只需三步：
 
-## 七、回测参数建议
+1. **装 Python**：建议 3.9～3.11（`jqdatasdk` 对 3.12+ 可能有兼容问题）；
+2. **建虚拟环境并装依赖**：在 PyCharm 中为本仓库建 Virtualenv，然后在 Terminal 执行：
+   ```bash
+   pip install -r requirements.txt
+   ```
+   （核心依赖：`jqdatasdk`、`pandas`、`numpy`、`matplotlib`、`scikit-learn`、`statsmodels`）
+3. **配聚宽账号**：注册 [聚宽 JoinQuant](https://www.joinquant.com)（免费，每月有数据额度），把手机号/密码填进根目录 `config.py`（或设环境变量 `JQDATA_PHONE` / `JQDATA_PASSWORD`）。
 
-每个策略文档的「回测说明」都给出了建议参数，通用配置如下：
+> 完整的安装、运行、调参、调试、引擎说明见 [`docs/本地回测使用指南.md`](docs/本地回测使用指南.md)。
 
-- **回测区间**：2016-01-01 ～ 2026-01-01（约 10 年）
-- **初始资金**：100 万元
-- **基准**：沪深300（000300.XSHG）
-- **频率**：日频（日内策略用分钟级，建议缩短区间）
-- **手续费/滑点**：已在代码中通过 `set_order_cost` / `set_slippage` 设定
+## 七、一键回测与调参
 
-> **关于回测数据（重要、如实说明）**：本仓库的每个策略都需要在聚宽**云端**运行才能得到真实回测数字，因此文档中**不预置回测收益率/最大回撤等数字**（避免给出无法复现或误导的数值）。请自行运行后在结果页查看：年化收益、最大回撤、夏普比率、胜率、换手率等指标。
+打开任意策略文件（如 `strategies/beginner/s01_ma_cross.py`），**右键 → Run** 即可回测，自动输出：
+
+- **详细绩效报告**：累计/年化收益率、最大回撤、夏普比率、胜率、换手率等；
+- **图表**：净值曲线（策略 vs 基准）+ 回撤曲线（保存为 `*_result.png`）。
+
+**修改回测参数**（每个策略文件顶部）：
+
+```python
+START_DATE   = '2016-01-01'   # 回测开始日期
+END_DATE     = '2024-01-01'   # 回测结束日期
+INITIAL_CASH = 1000000        # 初始资金（元）
+BENCHMARK    = '000300.XSHG'  # 基准指数
+```
+
+策略自身参数（均线周期、持仓数量等）在 `initialize(context)` 里通过 `g.xxx` 修改。
+
+> **关于回测数据（重要、如实说明）**：本地回测依赖聚宽 `jqdatasdk` 拉取真实数据，需联网 + 账号。免费账号每月有数据额度，回测全市场 + 10 年可能超额度，建议先用 2～3 年短区间验证。文档中**不预置回测收益率/最大回撤等数字**（避免给出无法复现或误导的数值），请自行运行查看。
 
 ## 八、聚宽常用函数速查
 
@@ -190,6 +214,25 @@ Quant_Lab/
 MIT License —— 可自由学习、修改、分发，但请保留出处。
 
 ## 十一、更新日志
+
+### v3.1.0（2026-09）
+
+**核心升级：20 个策略全部本地可一键回测。**
+
+- **自研轻量回测引擎 `jqbt`**（JoinQuant BackTest），封装聚宽风格 API，让策略代码几乎不改就能在本地 PyCharm 运行：
+  - `jqbt/api.py`：聚宽 API 兼容层（`g`/`context`/`log`/`order_*`/`get_*`/`attribute_history`/`get_fundamentals`/`get_current_data` 等）；
+  - `jqbt/data.py`：`jqdatasdk` 数据适配层（登录、拉取行情/财务/成分股/行业、内存缓存）；
+  - `jqbt/engine.py`：回测引擎核心（`run_daily`/`run_weekly`/`run_monthly` 调度、撮合、手续费滑点、**做空**、绩效统计）；
+  - `jqbt/metrics.py`：可视化（净值曲线 vs 基准、回撤曲线）。
+- **20 个策略全部改造为本地可回测**（`from jqdata import *` → `from jqbt.api import *`，文件底部加一键回测入口），支持自由修改回测时间、初始资金、策略参数。
+- **新增文档与配置**：
+  - `docs/本地回测使用指南.md`：环境安装（PyCharm + 虚拟环境）、一键回测、调参、调试、引擎能力与限制、FAQ；
+  - `requirements.txt`：依赖清单（jqdatasdk / pandas / numpy / matplotlib / scikit-learn / statsmodels）；
+  - `.gitignore`：忽略缓存、结果图、临时脚本、账号配置；
+  - `config.py`：聚宽账号配置模板（已 gitignore，支持环境变量）。
+- **引擎关键机制**：数据时间锚点（防未来函数）、当日实时数据近似构造（ST/停牌/涨跌停）、做空（负持仓）支持。
+
+> 说明：本地回测依赖聚宽官方 `jqdatasdk` 拉真实数据，需注册账号（免费）。引擎对「当日实时状态」「分钟级」等做了近似处理，完整说明见《本地回测使用指南》5.2 节。
 
 ### v3.0（2026-09）
 
