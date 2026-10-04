@@ -8,6 +8,7 @@
 
 | 文档 | 库 | 定位 | 一句话说明 |
 |------|-----|------|-----------|
+| [backtrader详解.md](backtrader详解.md) | backtrader | **本地回测引擎** | 本地回测的语法底座：Cerebro / Strategy / 指标 / 分析器 / 费用滑点全覆盖 |
 | [sklearn详解.md](sklearn详解.md) | scikit-learn | 机器学习的"瑞士军刀" | 分类/回归/聚类/降维/预处理一站式，API 统一 |
 | [xgboost详解.md](xgboost详解.md) | XGBoost | 梯度提升的工业级实现 | 因子筛选与合成，量化高频使用 |
 | [tensorflow_keras详解.md](tensorflow_keras详解.md) | TensorFlow / Keras | 深度学习框架 | 神经网络、LSTM、CNN、Transformer |
@@ -21,6 +22,9 @@
 ## 安装命令速查
 
 ```bash
+# 本地回测引擎（本仓库 strategies/backtrader 的依赖）
+pip install backtrader
+
 # 核心机器学习库
 pip install scikit-learn
 
@@ -47,6 +51,16 @@ pip install matplotlib
 
 | 库 | 函数/类 | 用途 | 所属模块 |
 |----|---------|------|----------|
+| backtrader | `bt.Cerebro` | 回测总控 | backtrader |
+| backtrader | `bt.Strategy` | 策略基类（`params`/`next`/`notify_order`） | backtrader |
+| backtrader | `bt.feeds.PandasData` | DataFrame → 行情数据源 | backtrader.feeds |
+| backtrader | `bt.ind.SMA/EMA/CrossOver/RSI/MACD/ATR` | 技术指标 | backtrader.indicators |
+| backtrader | `self.buy/sell/close` | 下单 | backtrader.Strategy |
+| backtrader | `self.order_target_value/percent` | 目标市值/比例调仓 | backtrader.Strategy |
+| backtrader | `bt.analyzers.TradeAnalyzer` | 交易统计 | backtrader.analyzers |
+| backtrader | `bt.analyzers.Transactions` | 逐笔成交明细 | backtrader.analyzers |
+| backtrader | `bt.CommInfoBase` | 自定义手续费模型 | backtrader |
+| backtrader | `broker.set_slippage_perc` | 百分比滑点 | backtrader.brokers |
 | sklearn | `StandardScaler` | 标准化 | preprocessing |
 | sklearn | `train_test_split` | 数据切分 | model_selection |
 | sklearn | `TimeSeriesSplit` | 时序切分 | model_selection |

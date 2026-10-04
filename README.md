@@ -69,14 +69,23 @@ Quant_Lab/
 ├── results/                   # 净值图 bt_*_result.png + 批量日志 logs/*.log
 └── docs/
     ├── 本地回测使用指南.md      # B 组：环境/数据/工具层/与聚宽差异对照/FAQ
-    ├── beginner/              # 入门篇：10 篇策略详解
-    ├── advanced/              # 进阶篇：10 篇策略详解
+    ├── joinquant/             # 【聚宽版教材】两套独立教材之一：10 + 10 篇详解
+    │   ├── README.md          #   本套索引与阅读顺序
+    │   ├── beginner/          #   01_ma_cross.md … 10_ml_stock.md
+    │   └── advanced/          #   01_volatility_targeting.md … 10_sentiment.md
+    ├── backtrader/            # 【backtrader 版教材】两套独立教材之二：10 + 10 篇详解
+    │   ├── README.md          #   本套索引与阅读顺序
+    │   ├── beginner/          #   01_ma_cross.md … 10_ml_stock.md
+    │   └── advanced/          #   01_volatility_targeting.md … 10_sentiment.md
     └── learning/              # 基础知识学习专区（四大板块）
         ├── 1.blockchain/      #   区块链学习指南
-        ├── 2.库详解/          #   pandas / sklearn / xgboost / tensorflow / chromadb / …
+        ├── 2.库详解/          #   backtrader 详解 / pandas / sklearn / xgboost / tensorflow / chromadb / …
         ├── 3.聚宽函数详解/    #   聚宽 get_ 系列函数详解
         └── 4.机器学习/        #   机器学习完全指南（21 章）
 ```
+
+> **关于两套教材**：同一个策略有**两份完全独立的详解**——`docs/joinquant/` 讲聚宽云端写法（`initialize` / `run_daily` / `get_fundamentals`…），`docs/backtrader/` 讲本地 backtrader 写法（`Cerebro` / `next()` / `bt.ind` / `PanelStrategy`…）。
+> 两份教材在开头互相链接、在"差异"一节逐条对照，但**各自独立成篇**，不需要来回跳着看。语法底座统一在 [`docs/learning/2.库详解/backtrader详解.md`](docs/learning/2.库详解/backtrader详解.md)。
 
 ---
 
@@ -163,6 +172,7 @@ Quant_Lab/
 
 | 文档 | 内容 |
 |------|------|
+| `backtrader详解.md` | **本地回测引擎完整语法手册**（20 节：核心概念/索引方向、Cerebro、Strategy、指标、Analyzer、费用滑点、聚宽对照表、btlab API、12 个常见坑、可运行模板） |
 | `pandas详解.md` | pandas 学习指南（Series/DataFrame、常用操作、完整选股示例） |
 | `pandas量化应用.md` | pandas 量化应用（收益率、滚动窗口、因子计算、IC、分层回测） |
 | `sklearn详解.md` | scikit-learn 详解（模块结构、API 哲学、预处理/切分/模型/聚类/降维/指标） |
@@ -315,6 +325,7 @@ MIT License —— 可自由学习、修改、分发，但请保留出处。
 
 完整变更记录见 **[CHANGELOG.md](CHANGELOG.md)**。近期版本：
 
+- **v4.1.0（2026-10）** 教材也拆成两套：`docs/joinquant/` 与 `docs/backtrader/` 各 10+10 篇独立详解（互链 + 差异对照）；新增《backtrader 详解》完整语法手册（约 960 行 / 20 节）；修正 `bt_s01` 中讲反的 Line 索引方向注释。
 - **v4.0.0（2026-10）** 双框架并行：聚宽原生 20 个 + backtrader 本地 20 个；接入免费长历史数据源（回测区间拉到 10 年+）；删除自研 `jqbt` 兼容层；重写使用指南与依赖清单。
 - **v3.2.0（2026-09）** 本地回测指南补充 FAQ、新增 config 模板。
 - **v3.1.0（2026-09）** 自研 `jqbt` 引擎，20 个策略本地可回测。

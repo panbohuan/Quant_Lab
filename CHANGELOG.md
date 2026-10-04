@@ -5,6 +5,62 @@
 
 ---
 
+## v4.1.0（2026-10）—— 教材拆分：两套独立详解 + backtrader 完整语法手册
+
+> v4.0.0 把**代码**拆成了两套框架，v4.1.0 把**教材**也拆成两套，并补齐了本地回测的语法底座。
+
+### 一、文档目录改为「两套独立教材」
+
+```
+docs/
+├── joinquant/            # 【新】聚宽版教材：10 + 10 篇
+│   ├── README.md         #   本套索引（阅读顺序 + 每篇覆盖的聚宽 API）
+│   ├── beginner/         #   01_ma_cross.md … 10_ml_stock.md
+│   └── advanced/         #   01_volatility_targeting.md … 10_sentiment.md
+├── backtrader/           # 【新】backtrader 版教材：10 + 10 篇
+│   ├── README.md         #   本套索引（阅读顺序 + 每篇讲透的 backtrader 语法）
+│   ├── beginner/         #   01_ma_cross.md … 10_ml_stock.md
+│   └── advanced/         #   01_volatility_targeting.md … 10_sentiment.md
+└── learning/2.库详解/backtrader详解.md   # 【新】backtrader 完整语法手册
+```
+
+- 原 `docs/beginner/`、`docs/advanced/`（内容为聚宽写法）**整体迁入** `docs/joinquant/`，
+  并在每篇开头加上「运行框架：聚宽 JoinQuant」标注与指向 backtrader 版的链接；
+- **新增 20 篇 backtrader 版详解**（`docs/backtrader/`）：与聚宽版**一一对应、各自独立成篇**，
+  每篇六段式——核心思路 / 算法结构 / **代码逐段详解（讲透本篇用到的 backtrader API）** /
+  与聚宽版的差异 / **回测结果（引用 `results/logs/` 的真实实测数字）** / 改进方向。
+
+### 二、新增《backtrader 详解》语法手册（`docs/learning/2.库详解/backtrader详解.md`）
+
+约 960 行、20 节，是本地回测的语法底座，覆盖：
+
+- 库定位与设计哲学、模块结构、15 行最小可运行模板；
+- **六个核心概念**：Line 与索引方向（实测验证 `[-1]`=昨天、`[1]`=明天）、生命周期回调顺序、
+  DataFeed、Cerebro、Broker、**默认「下一根开盘成交」的防未来函数机制**；
+- Cerebro / Strategy / 指标 / Analyzer / Observer / Sizer / 订单状态机 的完整 API 与参数表；
+- 交易成本与滑点（含 A 股 `AStockCommission` 完整实现）、Cheat-On-Open/Close、
+  多数据源与交易日历、参数优化；
+- **聚宽 API ↔ backtrader API 对照表**（26 项）、本仓库 `btlab` 工具层 API 速查、
+  **常见错误与坑 12 条**、完整可运行模板、学习路径。
+
+同时登记进 `docs/learning/2.库详解/README.md` 的文档清单与核心函数速查表。
+
+### 三、修正
+
+- `strategies/backtrader/beginner/bt_s01_ma_cross.py` 的注释原写「`[1]` 是昨天，`[-1]` 也是昨天」，
+  **方向讲反了**。实测确认：`[-1]`=昨天、`[-2]`=前天、**`[1]`=明天（未来，禁用）**；
+  且首根 K 线上的 `[-1]` 不会报错而是**静默绕到数据集最后一行**（隐蔽的未来函数泄漏）。
+  注释已改写，并作为重点坑写进 `backtrader详解.md` 第 5.1 / 18 节。
+
+### 四、校验
+
+- 20 篇 backtrader 文档的**全部绩效数字**（累计收益 / 年化 / 最大回撤 / 夏普）
+  逐一比对 `results/logs/*.log`，**20/20 完全一致**；
+- 全仓库 `docs/**` 的 51 个相对链接全部校验通过；
+- 20 个 `strategies/joinquant/**` 复核：剔除注释后**零框架残留**，仍是纯云端可粘贴代码。
+
+---
+
 ## v4.0.0（2026-10）—— 双框架并行：聚宽原生 + backtrader 本地
 
 > 这是本仓库技术路线的一次**重大调整**，也是第一次同时提供两套完整策略实现。
