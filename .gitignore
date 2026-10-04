@@ -3,25 +3,20 @@ __pycache__/
 *.pyc
 *.pyo
 
-# 本地数据缓存（jqbt 引擎拉取的行情缓存）
+# 本地数据缓存（约 30MB，可随时删除，下次运行会自动重建）
+data_cache/
 .cache/
-
-# 回测结果图片
-*_result.png
-s01_result.png
-
-# 临时测试脚本
-_test_engine.py
-_verify_all.py
-_refactor_strategies.py
-
-# 账号配置（含真实密码，切勿提交）
-config.py
 
 # 虚拟环境
 venv/
 .venv/
 env/
+
+# 临时脚本（仅限仓库根目录：以 _ 开头的调试/预热脚本。
+# 注意必须限定根目录，否则会误伤 btlab/__init__.py 这类包内文件）
+/_*.py
+/_*.png
+/_*.txt
 
 # IDE
 .idea/
