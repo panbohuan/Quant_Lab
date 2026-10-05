@@ -1,31 +1,12 @@
 # -*- coding: utf-8 -*-
 """
-btlab.datasource —— 免费数据源适配层（不依赖聚宽）
-================================================================================
-为本地 backtrader 回测提供**免费、免注册、长历史**的 A 股数据。
-所有数据均来自公开数据源（新浪财经 / 中证指数 / 东方财富 / 申万宏源 / 乐咕乐股），
-通过 akshare 统一接入，**不需要聚宽账号**。
+btlab.datasource —— 免费数据源适配层（akshare，不依赖聚宽）
 
-  数据            | 来源        | 历史起点       | 用途
-  ---------------|-------------|---------------|----------------------------
-  股票日线        | 新浪财经    | 1990 年代起    | 支持前/后复权
-  指数日线        | 新浪财经    | 2000 年代起    | 沪深300 / 中证500 / 创业板指
-  ETF 日线        | 新浪财经    | 上市日起       | 宽基 / 行业 / 跨境 ETF
-  指数成分股      | 中证指数官网| 最新成分       | 沪深300 / 中证500
-  个股估值与市值  | 东方财富    | 约 2018 年起   | PE(TTM) / PB / 总市值
-  个股财务指标    | 新浪财经    | 指定年份起     | ROE / 净利润增长率
-  申万行业指数    | 申万宏源    | 1999 年起      | 行业轮动（31 个一级行业）
-  申万行业成分股  | 申万宏源    | 最新成分       | 行业内选股
-  可转债日线      | 新浪财经    | 上市日起       | 可转债双低策略
-  指数 PE（月度） | 乐咕乐股    | 2005 年起      | 因子择时 / 市场温度
+提供股票/指数/ETF 日线、指数成分股、个股估值与市值、财务指标、申万行业、可转债、
+指数 PE，全部来自公开免费源（新浪 / 中证 / 东财 / 申万 / 乐咕乐股）。
 
-特性
-----
-  - **磁盘缓存**（data_cache/）：同一数据只联网拉一次，之后读缓存秒开；
-  - **自动重试**：网络抖动自动重试 3 次；
-  - **代码归一化**：'600000' / 'sh600000' / 'sh.600000' 都能识别，
-    且能正确区分「000001=平安银行(SZ)」与「sh000001=上证指数」。
-================================================================================
+特性：磁盘缓存（data_cache/）、网络抖动自动重试、代码归一化。
+局限：成分股与行业分类只有「当前」快照，历史回测存在幸存者偏差。
 """
 import os
 import re
@@ -57,6 +38,11 @@ def clear_cache(prefix=None):
 
 def _cache_path(name):
     return os.path.join(cache_dir(), name)
+
+
+def _fresh(fp, days=30):
+    """缓存文件是否存在且未过期（按文件修改时间判断）。"""
+    return os.path.exists(fp) and (time.time() - os.path.getmtime(fp)) < days * 86400
 
 
 def _retry(fn, tries=3, wait=1.2):
@@ -94,7 +80,7 @@ _INDEX_KNOWN = {
     '000300', '000905', '000016', '000852', '000688', '000010', '000009',
     '000985', '000922', '000906', '000903', '000991', '000992', '000990',
 }
-# 显式带市场前缀时，视为指数的沪深指数代码
+# 显式写成 sh 前缀时视为指数的代码（sz000001 仍是平安银行，不是指数）
 _INDEX_EXPLICIT = {'000001', '000002', '000003', '000300', '000905', '000016',
                    '000852', '000688', '000010', '000009'}
 # 指数号码段前缀（399xxx 深市指数、930/980 中证指数、801xxx 申万、88xxxx 万得）
@@ -126,7 +112,7 @@ def classify(code):
     pre = _explicit_market(code)
     if num in _INDEX_KNOWN or num.startswith(_INDEX_PREFIX):
         return 'index'
-    if pre and num in _INDEX_EXPLICIT:
+    if pre == 'sh' and num in _INDEX_EXPLICIT:
         return 'index'
     if num.startswith(_ETF_PREFIX):
         return 'etf'
@@ -216,7 +202,9 @@ def load_daily(code, start='2010-01-01', end=None, adjust='qfq', kind=None,
     fp = _cache_path(f'daily_{c}_{k}_{adjust or "raw"}.csv')
     if use_cache and os.path.exists(fp):
         cached = _standardize(pd.read_csv(fp, parse_dates=['date'], index_col='date'))
-        if len(cached) and str(cached.index[-1].date()) >= _refresh_floor(7):
+        # 数据日期够新，或缓存本身是最近 7 天内写的（退市标的不会再更新）→ 直接用
+        if len(cached) and (str(cached.index[-1].date()) >= _refresh_floor(7)
+                            or _fresh(fp, 7)):
             return _slice(cached, start, end)
 
     import akshare as ak
@@ -304,7 +292,7 @@ def load_index_members(index_code='000300'):
     """加载指数成分股（中证指数官网优先，新浪兜底），返回股票代码列表。"""
     num = _plain(index_code)
     fp = _cache_path(f'members_{num}.csv')
-    if os.path.exists(fp):
+    if _fresh(fp, 30):
         return pd.read_csv(fp, dtype=str)['code'].tolist()
 
     import akshare as ak
@@ -398,7 +386,7 @@ def roe_series(code, start_year='2015'):
 def sw_industries(use_cache=True):
     """申万一级行业列表，返回 DataFrame(columns=[code, name])。"""
     fp = _cache_path('sw_l1_list.csv')
-    if use_cache and os.path.exists(fp):
+    if use_cache and _fresh(fp, 30):
         return pd.read_csv(fp, dtype=str)
     import akshare as ak
     df = _retry(lambda: ak.sw_index_first_info())
@@ -441,7 +429,7 @@ def load_sw_members(code, tries=4, wait=2.0):
     """
     num = _plain(code)
     fp = _cache_path(f'sw_members_{num}.csv')
-    if os.path.exists(fp):
+    if _fresh(fp, 30):
         return pd.read_csv(fp, dtype=str)['code'].tolist()
     import akshare as ak
 

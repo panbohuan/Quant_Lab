@@ -1,42 +1,11 @@
 # -*- coding: utf-8 -*-
-# ==========================================================================================
-# 【backtrader 本地回测版 · 可离线运行】对应聚宽版：strategies/joinquant/beginner/s10_ml_stock.py
-#
-# 回测内核：backtrader（官方开源框架）｜数据：btlab.datasource（免费，无需聚宽账号）
-# 运行方式（项目根目录）：python strategies/backtrader/beginner/bt_s10_ml_stock.py
-# 需要额外依赖：scikit-learn（pip install scikit-learn）
-#
-# 与聚宽版的差异：
-#   聚宽版一次性取全市场样本训练；本地版采用**逐期滚动扩窗**训练——每个月只用
-#   "截至上个月已经能观察到标签"的样本重新训练，从根上杜绝未来函数。
-#   代价是前若干个月样本不足，只能按因子等价权先跑（代码里有明确提示）。
-# ==========================================================================================
+# 【backtrader 本地回测版】运行：python strategies/backtrader/beginner/bt_s10_ml_stock.py
+# 对应聚宽版：strategies/joinquant/beginner/s10_ml_stock.py
+# 详细讲解：docs/backtrader/beginner/10_ml_stock.md
 """
-================================================================================
-策略 10：机器学习选股（随机森林 Random Forest）· backtrader 本地版
-================================================================================
-策略类型：机器学习选股（监督学习 · 二分类）
-难度等级：★★★★★
+策略 10：机器学习选股（随机森林 Random Forest）
+类型：机器学习选股（监督学习 · 二分类） ｜ 难度：★★★★★
 核心思路：把"因子选股"抽象成监督学习问题——用历史量价特征预测
-          "未来 N 日是否上涨"（二分类），训练随机森林，对当期股票预测
-          上涨概率，买入概率最高的 K 只。
-
-【特征设计（5 个）】
-  1. 20 日动量       = close_t / close_{t-20} - 1
-  2. 60 日动量       = close_t / close_{t-60} - 1
-  3. 20 日波动率     = std(近 20 日日收益率)
-  4. 均线偏离度      = close_t / MA60 - 1
-  5. 量比            = 近 5 日均量 / 近 60 日均量
-
-【标签设计】
-  未来 20 个交易日收益率 > 0 → 1，否则 0
-
-【学习重点】
-  - 特征工程 / 标签构造 / 训练-预测的完整闭环
-  - **样本分批与打标签的时序纪律**：本期收集特征 → 20 个交易日后才能知道标签
-  - 防止未来函数的三个手段：滚动训练、标签滞后确认、只用已实现收益
-  - 过拟合的表现：样本少时模型容易"记住噪声"，所以用 min_samples_leaf 限制复杂度
-================================================================================
 """
 import os
 import sys
@@ -102,15 +71,18 @@ class MLStock(PanelStrategy):
     # ---------- 给到期样本打标签 ----------
     def _label_pending(self):
         still = []
-        for code, feats, p0, bars0 in self.pending:
+        for code, feats, p0, bars0, miss in self.pending:
             d = self.getdatabyname(code)
-            if len(d) - bars0 >= self.p.horizon:           # 已过预测窗口，标签可确认
+            moved = len(d) - bars0
+            if moved >= self.p.horizon:                    # 已过预测窗口，标签可确认
                 p1 = d.close[0]
                 if p0 > 0 and p1 > 0:
                     self.X.append(feats)
                     self.y.append(1 if p1 / p0 - 1.0 > 0 else 0)
+            elif moved == 0 and miss >= 4:
+                continue                                   # 长期停牌/退市，丢弃不计
             else:
-                still.append((code, feats, p0, bars0))
+                still.append((code, feats, p0, bars0, miss + (1 if moved == 0 else 0)))
         self.pending = still
 
     def on_rebalance(self, cur):
@@ -151,7 +123,7 @@ class MLStock(PanelStrategy):
 
         # 4) 登记本期样本，等 HORIZON 个交易日后打标签
         for c in codes:
-            self.pending.append((c, feats[c], price[c], len(self.getdatabyname(c))))
+            self.pending.append((c, feats[c], price[c], len(self.getdatabyname(c)), 0))
 
         self.equal_weight_order(names, cur)
 

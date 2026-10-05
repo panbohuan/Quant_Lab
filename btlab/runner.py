@@ -1,22 +1,14 @@
 # -*- coding: utf-8 -*-
 """
-btlab.runner —— backtrader 回测样板封装（工具层，非框架）
-================================================================================
-**回测内核完全由 backtrader 官方引擎承担**：行情推进、撮合、持仓、账务、
-盈亏、净值计算全部是 backtrader 的 `Cerebro` / `Broker` / `Strategy` 在做。
+btlab.runner —— backtrader 回测样板封装
 
-本模块只做三件"少写重复代码"的事（20 个策略文件都要用到的样板）：
+只做三件样板事：build_cerebro() 建引擎（A 股费用 + 滑点）、run_strategy() 一键回测
+出报告、PanelStrategy 多标的调仓骨架。撮合、持仓、账务全由 backtrader 引擎负责。
 
-  1. `build_cerebro()`  —— 建 Cerebro，设初始资金 + A 股真实费用 + 滑点；
-  2. `run_strategy()`   —— 喂数据、跑回测、取出净值，生成绩效报告与净值图；
-  3. A 股手续费模型       —— 佣金双边、印花税仅卖出、单笔最低 5 元。
-
-A 股交易成本口径（与聚宽 set_order_cost 对齐）：
-  佣金     买卖各 0.03%（最低 5 元）
-  印花税   仅卖出收取 0.05%（2023-08-28 起减半，之前为 0.1%）
-  滑点     单边 0.02%
-================================================================================
+A 股费用口径：佣金买卖各 0.03%（单笔最低 5 元）、印花税仅卖出（2023-08-28 起
+0.05%，之前 0.1%）、滑点单边 0.02%。
 """
+import datetime
 import os
 import sys
 
@@ -34,19 +26,25 @@ from btlab.metrics import perf_from_nav, format_report, plot_equity  # noqa: E40
 
 # ============================ A 股手续费模型 ============================
 
+# 印花税减半的日子：2023-08-28 之前 0.1%，之后 0.05%
+_STAMP_DUTY_CUTOFF = datetime.date(2023, 8, 28)
+
+
 class AStockCommission(bt.CommInfoBase):
-    """A 股（股票/ETF）佣金模型：佣金双边 + 印花税仅卖出 + 最低佣金。
+    """A 股费用模型：佣金双边（每股最低 5 元）+ 印花税仅卖出。
 
     这是 backtrader 官方的 `CommInfoBase` 扩展点，不是自研撮合逻辑。
+    印花税按成交日切换，成交日由 NavRecorder 每根 K 线写入 ``self.today``。
     """
 
     params = (
         ('stocklike', True),
         ('commtype', bt.CommInfoBase.COMM_PERC),
-        ('percabs', True),        # commission 按"绝对百分比"解释：0.0003 = 0.03%
-        ('commission', 0.0003),   # 佣金（买卖双边）
-        ('stamp_duty', 0.0005),   # 印花税（仅卖出，2023-08-28 起 0.05%）
-        ('min_comm', 5.0),        # 单笔最低佣金（元）
+        ('percabs', True),           # commission 按绝对百分比解释：0.0003 = 0.03%
+        ('commission', 0.0003),      # 佣金（买卖双边）
+        ('stamp_duty', 0.0005),      # 印花税（仅卖出，2023-08-28 起）
+        ('stamp_duty_pre', 0.0010),  # 印花税（2023-08-28 之前）
+        ('min_comm', 5.0),           # 单笔最低佣金（元）
     )
 
     def _getcommission(self, size, price, pseudoexec):
@@ -54,23 +52,30 @@ class AStockCommission(bt.CommInfoBase):
         if value <= 0:
             return 0.0
         comm = value * self.p.commission
-        if size < 0:                              # 卖出方向才收印花税
-            comm += value * self.p.stamp_duty
-        return comm if comm > self.p.min_comm else self.p.min_comm
+        if comm < self.p.min_comm:                # 最低佣金只在佣金上兜底
+            comm = self.p.min_comm
+        if size < 0:                              # 只有卖出方向收印花税
+            today = getattr(self, 'today', None)
+            rate = (self.p.stamp_duty_pre
+                    if today is not None and today < _STAMP_DUTY_CUTOFF
+                    else self.p.stamp_duty)
+            comm += value * rate
+        return comm
 
 
 # ============================ 净值记录器 ============================
 
 class NavRecorder(bt.Analyzer):
-    """逐日记录账户总资产，供绘制净值曲线与计算绩效指标。
+    """逐日记录账户总资产；同时把当前日期发给费用模型（用于按日取印花税）。"""
 
-    用的是 backtrader 官方 Analyzer 扩展点（`prenext` / `nextstart` / `next`）。
-    """
+    params = (('comm', None),)
 
     def start(self):
         self._d, self._v = [], []
 
     def _rec(self):
+        if self.p.comm is not None:
+            self.p.comm.today = self.strategy.datetime.date(0)
         self._d.append(self.strategy.datetime.date(0))
         self._v.append(self.strategy.broker.getvalue())
 
@@ -94,11 +99,11 @@ def build_cerebro(cash=1_000_000, commission=0.0003, stamp_duty=0.0005, min_comm
     """建一个配置好 A 股费用/滑点的 backtrader Cerebro。"""
     cerebro = bt.Cerebro(stdstats=False)
     cerebro.broker.setcash(cash)
-    cerebro.broker.setcommission(commission=commission)
-    cerebro.broker.addcommissioninfo(AStockCommission(
-        commission=commission, stamp_duty=stamp_duty, min_comm=min_comm))
+    comm = AStockCommission(commission=commission, stamp_duty=stamp_duty,
+                            min_comm=min_comm)
+    cerebro.broker.addcommissioninfo(comm)
     cerebro.broker.set_slippage_perc(slippage)
-    cerebro.addanalyzer(NavRecorder, _name='nav')
+    cerebro.addanalyzer(NavRecorder, _name='nav', comm=comm)
     cerebro.addanalyzer(bt.analyzers.Transactions, _name='txn')
     cerebro.addanalyzer(bt.analyzers.TradeAnalyzer, _name='trades')
     return cerebro
@@ -257,6 +262,14 @@ class PanelStrategy(bt.Strategy):
         """该标的今天是否有行情（停牌 / 未上市时返回 False）。"""
         return len(d) > 0 and d.datetime.date(0) == cur
 
+    def _frozen_value(self, cur):
+        """今天无法交易的持仓市值（停牌等）。"""
+        total = 0.0
+        for d in self.tradables:
+            if self.getposition(d).size and not self.live(d, cur):
+                total += abs(self.getposition(d).size) * d.close[0]
+        return total
+
     def hist_close(self, d, n):
         """取标的最近 n 个收盘价（含今日）；不足 n 个返回 None。"""
         if len(d) < n:
@@ -276,7 +289,9 @@ class PanelStrategy(bt.Strategy):
         live_names = [n for n in names if self.live(self.getdatabyname(n), cur)]
         if not live_names:
             return
-        per = self.broker.getvalue() * cap / len(live_names)
+        # 停牌股今天卖不掉，先从调仓预算里扣掉它们的市值，避免下单被拒/超配
+        budget = max(self.broker.getvalue() - self._frozen_value(cur), 0.0)
+        per = budget * cap / len(live_names)
         for d in self.tradables:                       # 1) 先卖（腾出现金）
             if d._name not in live_names and self.getposition(d).size and self.live(d, cur):
                 self.close(d)
@@ -302,7 +317,7 @@ class PanelStrategy(bt.Strategy):
         live_names = [n for n in weights if self.live(self.getdatabyname(n), cur)]
         if not live_names:
             return
-        total = self.broker.getvalue()
+        total = max(self.broker.getvalue() - self._frozen_value(cur), 0.0)
         for d in self.tradables:
             if d._name not in live_names and self.getposition(d).size and self.live(d, cur):
                 self.close(d)
@@ -343,24 +358,25 @@ def load_universe(codes, start, end=None, adjust='qfq', kind=None,
 
 
 def round_lot(size, lot=100):
-    """把股数向下取整到整手（A 股 1 手 = 100 股/份）。"""
+    """取整到整手（A 股 1 手 = 100 股/份），按绝对值向下取整。"""
     size = int(size)
-    return size - size % lot
+    return (size // lot) * lot if size >= 0 else -((-size) // lot * lot)
 
 
 # ============================ 基本面面板（因子策略用） ============================
 
 def asof(panel, cur):
-    """取面板中「不晚于 cur」的最近一行 —— 严格防止用到未来数据。
+    """取面板中「不晚于 cur」的最近一期数据 —— 只用已公布的信息，防未来函数。
 
-    返回 Series(index=标的代码)；面板为空时返回 None。
+    逐列前向填充后再取最后一行：某只股票当天没有数据时，用它的上一期值，
+    而不是把这只股票整只丢掉。返回 Series(index=标的代码)。
     """
     if panel is None or len(panel) == 0:
         return None
     sub = panel.loc[:pd.Timestamp(cur)]
     if len(sub) == 0:
         return None
-    row = sub.iloc[-1]
+    row = sub.ffill().iloc[-1]
     return row.dropna() if hasattr(row, 'dropna') else row
 
 

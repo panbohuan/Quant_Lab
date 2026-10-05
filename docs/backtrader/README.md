@@ -41,7 +41,7 @@
 | 2 | [行业轮动](advanced/02_sector_rotation.md) | 中观配置 | 买最强行业，月度切换 | 多标的组织 / `live()` 停牌判断 |
 | 3 | [多空对冲](advanced/03_long_short.md) | 绝对收益 | 多强空弱，剥离市场 Beta | **做空机制**：负 `size` / `position.size` 符号 / 风险熔断 |
 | 4 | [事件驱动](advanced/04_event_driven.md) | 另类策略 | 业绩超预期后买入并持有窗口 | `event_calendar` 结构与窗口判断 |
-| 5 | [可转债双低](advanced/05_convertible_bond.md) | 跨品种 | 低价格 + 低溢价率 | `listed_bonds` / `load_bond_daily` / 覆盖率门槛 |
+| 5 | [低价可转债轮动](advanced/05_convertible_bond.md) | 跨品种 | 低价格（真双低需历史溢价率，免费源不可得） | `listed_bonds` / `load_bond_daily` / 覆盖率门槛 |
 | 6 | [ETF 轮动](advanced/06_etf_rotation.md) | 资产配置 | 动量轮动 + 国债防御切换 | `value_weight_order` / 权重归一化 |
 | 7 | [因子择时](advanced/07_factor_timing.md) | 因子进阶 | 按指数 PE 分位切换因子权重 | 分位数计算 / regime 切换 |
 | 8 | [ML 因子合成](advanced/08_ml_factor.md) | ML 进阶 | 梯度提升合成 6 个因子 | `GradientBoostingRegressor` / 滚动训练 |

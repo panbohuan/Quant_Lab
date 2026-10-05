@@ -1,20 +1,12 @@
 # -*- coding: utf-8 -*-
 """
-批量运行全部 backtrader 策略并汇总绩效
-================================================================================
-用法（在项目根目录执行）：
+批量运行全部 backtrader 策略并汇总绩效。
 
-    python tools/run_all_backtrader.py              # 跑全部 20 个
-    python tools/run_all_backtrader.py s01 a05      # 只跑名字里含 s01 / a05 的
-    python tools/run_all_backtrader.py --no-plot    # 预留：不带图跑（当前始终画图）
+    python tools/run_all_backtrader.py            # 跑全部 20 个
+    python tools/run_all_backtrader.py s01 a05    # 只跑名字里含 s01 / a05 的
 
-它会：
-  1. 依次用当前解释器运行 strategies/backtrader/{beginner,advanced}/ 下的全部脚本；
-  2. 把每个策略的完整输出写到 results/logs/<策略名>.log；
-  3. 在终端打印一张汇总绩效表（累计收益 / 年化 / 最大回撤 / 夏普 / 耗时）。
-
-注意：首次运行需要联网拉取数据（约 3~10 分钟），之后有 data_cache/ 缓存会快很多。
-================================================================================
+每个策略的完整输出写到 results/logs/，终端打印一张汇总绩效表。
+首次运行需联网拉数据（约 3~10 分钟），之后走 data_cache/ 缓存会快很多。
 """
 import os
 import re

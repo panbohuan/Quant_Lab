@@ -1,41 +1,11 @@
 # -*- coding: utf-8 -*-
-# ==========================================================================================
-# 【backtrader 本地回测版 · 可离线运行】对应聚宽版：strategies/joinquant/advanced/a08_ml_factor.py
-#
-# 回测内核：backtrader（官方开源框架）｜数据：btlab.datasource（免费，无需聚宽账号）
-# 运行方式（项目根目录）：python strategies/backtrader/advanced/bt_a08_ml_factor.py
-# 需要额外依赖：scikit-learn
-#
-# 与聚宽版的差异：
-#   1) 用**梯度提升回归树**（GradientBoostingRegressor）直接回归"未来 20 日收益率"，
-#      与 s10 的随机森林分类（涨/跌）形成对照：回归给出的是收益幅度预期，
-#      分类给出的是方向概率。
-#   2) 逐期滚动扩窗训练，样本标签必须等预测窗口结束后才确认 —— 严格避免未来函数。
-#   3) 未做时序交叉验证调参（聚宽版提到过），这里固定一组较保守的超参数以避免过拟合。
-# ==========================================================================================
+# 【backtrader 本地回测版】运行：python strategies/backtrader/advanced/bt_a08_ml_factor.py
+# 对应聚宽版：strategies/joinquant/advanced/a08_ml_factor.py
+# 详细讲解：docs/backtrader/advanced/08_ml_factor.md
 """
-================================================================================
-进阶策略 8：机器学习因子合成（ML Factor Combination）· backtrader 本地版
-================================================================================
-策略类型：机器学习进阶 / 因子合成
-难度等级：★★★★★
-核心思路：用梯度提升树把多个因子**非线性地**合成为一个预期收益预测，
-          替代 s07 的手工线性加权。让模型自己学习"因子如何组合才能预测收益"。
-
-【特征（6 个）】
-  量价类：20 日动量、60 日动量、20 日波动率、量比
-  基本面类：PB（z-score）、对数市值（z-score）
-【标签】
-  未来 20 个交易日的收益率（连续值，回归任务）
-
-【学习重点】
-  - 回归 vs 分类：预测"涨多少"比预测"涨不涨"信息量更大，但也更难
-  - 时序滚动训练：每月用"标签已确认"的历史样本重新训练，样本随月份增长
-  - 防止过拟合的三板斧：浅树（max_depth=3）、叶子样本下限（min_samples_leaf）、
-    特征少而稳定（6 个）——树越深越容易记住噪声
-  - 特征重要性（model.feature_importances_）：模型自己告诉我们哪个因子有用
-  - 可解释性：线性模型看系数，树模型看特征重要性
-================================================================================
+策略 8：机器学习因子合成（ML Factor Combination）
+类型：机器学习进阶 / 因子合成 ｜ 难度：★★★★★
+核心思路：用梯度提升树把多个因子非线性地合成为一个预期收益预测，
 """
 import os
 import sys
@@ -114,15 +84,18 @@ class MLFactor(PanelStrategy):
 
     def _label_pending(self):
         still = []
-        for code, feats, p0, bars0 in self.pending:
+        for code, feats, p0, bars0, miss in self.pending:
             d = self.getdatabyname(code)
-            if len(d) - bars0 >= self.p.horizon:
+            moved = len(d) - bars0
+            if moved >= self.p.horizon:
                 p1 = d.close[0]
                 if p0 > 0 and p1 > 0 and np.isfinite(feats).all():
                     self.X.append(list(feats))
                     self.y.append(p1 / p0 - 1.0)          # 回归标签：真实收益率
+            elif moved == 0 and miss >= 4:
+                continue                                   # 长期停牌/退市，丢弃不计
             else:
-                still.append((code, feats, p0, bars0))
+                still.append((code, feats, p0, bars0, miss + (1 if moved == 0 else 0)))
         self.pending = still
 
     def on_rebalance(self, cur):
@@ -178,7 +151,7 @@ class MLFactor(PanelStrategy):
         # 5) 登记本期样本，等预测窗口结束后打标签
         for i, c in enumerate(codes):
             self.pending.append((c, np.array(vectors[i]), price[c],
-                                 len(self.getdatabyname(c))))
+                                 len(self.getdatabyname(c)), 0))
 
         self.equal_weight_order(names, cur)
 

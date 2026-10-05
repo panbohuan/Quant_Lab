@@ -1,34 +1,12 @@
 # -*- coding: utf-8 -*-
-# ==========================================================================================
-# 【backtrader 本地回测版 · 可离线运行】对应聚宽版：strategies/joinquant/advanced/a03_long_short.py
-#
-# 回测内核：backtrader（官方开源框架）｜数据：btlab.datasource（免费，无需聚宽账号）
-# 运行方式（项目根目录）：python strategies/backtrader/advanced/bt_a03_long_short.py
-#
-# 与聚宽版的差异 / 重要假设：
-#   1) 本回测**不做融券可行性校验**，也**不计融券利息与借券费**，属于理想化模型；
-#      真实 A 股融券标的有限、券源紧张、成本约年化 8%~10%，会显著削弱绝对收益。
-#   2) 多空市值各占净值的 LONG_EXPOSURE 比例（默认 40%+40%，总敞口 0.8 倍），
-#      比聚宽示例的"满仓多空"保守，避免净值被极端行情打到负数。
-#   3) 股票池为「当前」沪深300成分股（大盘股多、券商券源多），存在幸存者偏差。
-# ==========================================================================================
+# 【backtrader 本地回测版】运行：python strategies/backtrader/advanced/bt_a03_long_short.py
+# 对应聚宽版：strategies/joinquant/advanced/a03_long_short.py
+# 详细讲解：docs/backtrader/advanced/03_long_short.md
 """
-================================================================================
-进阶策略 3：多空对冲策略（Long-Short Equity）· backtrader 本地版
-================================================================================
-策略类型：绝对收益 / 市场中性
-难度等级：★★★★★
+策略 3：多空对冲策略（Long-Short Equity）
+类型：绝对收益 / 市场中性 ｜ 难度：★★★★★
 核心思路：买入因子排名前 10% 的股票（多头），同时卖出排名后 10% 的股票（空头），
-          剥离市场 Beta，纯赚 Alpha。多头和空头市值相等 → Beta 中性。
-
-【学习重点】
-  - backtrader 中做空的实现：self.sell() 之后持仓 size 变为负数，
-    账户总资产 = 现金 + Σ(持仓数量 × 现价)，空头自然形成"负市值"，
-    股价下跌时空头盈利 —— 与真实融券的盈亏方向一致
-  - 多空平衡：多头市值 ≈ 空头市值，组合对大盘涨跌不敏感
-  - Alpha 与 Beta 的分离："Beta"=跟随市场的收益，"Alpha"=选股带来的超额收益
-  - 资金占用：做空会收到现金，所以能买入更多多头（回测里体现为可用现金变多）
-================================================================================
+注意：未校验融券可行性、不计融券利息与借券费；真实 A 股券源有限、成本约年化 8%~10%。
 """
 import os
 import sys
@@ -66,7 +44,7 @@ class LongShort(PanelStrategy):
 
     def on_rebalance(self, cur):
         # 0) 风控保险丝：净值被打到很低时清仓并停止交易
-        if self.broker.getvalue() < CASH * STOP_EQUITY_RATIO:
+        if self.broker.getvalue() < self.broker.startingcash * STOP_EQUITY_RATIO:
             self.close_all(cur)
             print(f'  [{cur}] 净值跌破 {STOP_EQUITY_RATIO:.0%}，清仓停止交易')
             return
@@ -89,8 +67,8 @@ class LongShort(PanelStrategy):
             return
 
         equity = self.broker.getvalue()
-        per_long = round_lot(equity * self.p.long_exposure / len(longs) / 1.0)
-        per_short = round_lot(equity * self.p.short_exposure / len(shorts) / 1.0)
+        capital_long = equity * self.p.long_exposure / len(longs)     # 每只多头目标市值
+        capital_short = equity * self.p.short_exposure / len(shorts)  # 每只空头目标市值
 
         # 2) 先平掉不在名单里的仓位
         for d in self.tradables:
@@ -101,11 +79,11 @@ class LongShort(PanelStrategy):
 
         # 3) 多头：目标为正的股数
         for name in longs:
-            self._target_size(name, per_long, cur)
+            self._target_size(name, capital_long, cur)
 
         # 4) 空头：目标为负的股数
         for name in shorts:
-            self._target_size(name, per_short, cur, short=True)
+            self._target_size(name, capital_short, cur, short=True)
 
     def _target_size(self, name, capital, cur, short=False):
         """把某只股票调整到目标股数（空头时目标为负数）。"""
