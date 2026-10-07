@@ -1,75 +1,176 @@
-# 进阶策略 3：多空对冲策略（Long-Short Equity）· backtrader 本地版
+# 进阶 3：多空对冲策略（Long-Short Equity）· backtrader 本地版
 
-> 类型：绝对收益 / 市场中性 ｜ 难度：★★★★★
-> 前置知识：做空机制（负持仓）、`PanelStrategy`、`position.size` 符号、风险熔断
-> **运行框架：backtrader（本地回测 + 免费数据）** ｜ 本策略的**聚宽云端版**见 [docs/joinquant/advanced/03_long_short.md](../../joinquant/advanced/03_long_short.md)
+> **策略类型**：绝对收益 / 市场中性 ｜ **难度**：★★★★★ ｜ **前置知识**：知道"做空""Beta"
+> **运行**：`python strategies/backtrader/advanced/bt_a03_long_short.py` ｜ **聚宽版**：[03_long_short.md](../../joinquant/advanced/03_long_short.md)
+> **语法底座**：[backtrader详解.md](../../learning/2.库详解/backtrader详解.md) 第 5 章、第 9.6 节（做空）
 
-## 一、核心思路
+---
 
-这是整条学习路径里**最关键的一次认知升级**——理解「Alpha 和 Beta 的分离」。
+## 一、这一篇你将学到什么
 
-- **Beta**：你"跟随市场"赚的钱。大盘涨 10%，你的股票也涨 10%，这 10% 就是 Beta。
-- **Alpha**：你"跑赢市场"赚的钱。大盘涨 10%，你的股票涨 15%，多出的 5% 才是 Alpha。
+前面所有策略都是"只做多"。这一篇第一次**同时做多和做空**，目标是**把大盘涨跌的影响剥离掉**。
 
-普通多头策略赚"Alpha + Beta"。大盘暴跌时，Beta 会严重拖累收益——哪怕你选的股票都跑赢了市场，整体还是亏。
+| 你会搞懂 | 一句话 |
+|---|---|
+| **Alpha 与 Beta** | Beta = 跟着大盘涨跌的部分；Alpha = 选股带来的超额 |
+| **做空怎么实现** | `self.sell(size=n)` 且当前无持仓 → 持仓变成负数 |
+| `position.size` 的符号 | 正=多头、负=空头、0=空仓 |
+| 多空平衡 | 多头市值 ≈ 空头市值 → 组合对大盘不敏感 |
+| **风险熔断** | 净值跌破阈值就清仓停手 |
 
-多空对冲做法：
+**读完你应该能回答**：为什么"多空对冲"能在大盘下跌时也赚钱？它的代价是什么？
 
-```
-1. 做多 一批最强股票（赚 Alpha + Beta）
-2. 做空 一批最弱股票（赚 -Alpha - Beta，反向）
-3. 多空市值相等 → Beta 部分抵消 → 剩"强股 Alpha - 弱股 Alpha" = 纯 Alpha
-```
+---
 
-这样无论大盘涨跌，赚的是"选股能力的差价"，不赌市场方向——即"绝对收益 / 市场中性"。
-
-本策略参数一览（文件顶部常量）：
-
-| 参数 | 默认值 | 含义 |
-|------|--------|------|
-| `START` | `2015-01-01` | 回测起点 |
-| `UNIVERSE_SIZE` | `40` | 沪深300 前 40 只成分股作候选池 |
-| `LOOKBACK` | `60` | 动量因子回看期 |
-| `LONG_NUM` / `SHORT_NUM` | `10` / `10` | 多头 / 空头只数 |
-| `LONG_EXPOSURE` / `SHORT_EXPOSURE` | `0.40` / `0.40` | 多/空市值占净值比例（总敞口 0.8 倍） |
-| `STOP_EQUITY_RATIO` | `0.40` | 净值跌破初始资金 40% → 清仓停交易 |
-
-聚宽版是"多空各满仓（leverage=1.0）"，本地版保守到各 0.40，并额外加了聚宽没有的**风险熔断保险丝**。
-
-## 二、算法结构（分步拆解）
+## 二、心智模型：同时买最强、卖最弱
 
 ```
-每月第1个交易日 → on_rebalance(cur)
+每月第一个交易日（收盘后）
    │
-   ├─ 0. 风控保险丝：总资产 < 初始资金 × 40% → close_all 并停止交易
+   ├─ 0. 先看风控：净值 < 初始资金 × 40% ？→ 清仓，本月不再交易
    │
-   ├─ 1. 算每只股票动量 mom = close[-1]/close[0] - 1（仅 live 标的）
-   │      └─ 样本不足 long+short 只 → 跳过
+   ├─ 1. 算 40 只股票的 60 日动量，排序
    │
-   ├─ 2. 排名：多头=前 long_num 只，空头=后 short_num 只（去重）
+   ├─ 2. 多头 = 最强的 10 只    空头 = 最弱的 10 只
+   │         （两组不能重叠）
    │
-   ├─ 3. 先平掉不在名单里的持仓（self.close(d)）
+   ├─ 3. 两组各占净值的 40%（合计总敞口 80%）
+   │         多头每只 ≈ 4% 净值；空头每只 ≈ 4% 净值
    │
-   ├─ 4. 多头：_target_size(name, per_long, short=False)  → 目标正股数
+   ├─ 4. 先平掉不在名单里的持仓
    │
-   └─ 5. 空头：_target_size(name, per_short, short=True)  → 目标负股数（做空）
+   ├─ 5. 多头：目标股数 = +（市值/价格 取整手）
+   │      空头：目标股数 = −（市值/价格 取整手）
+   │
+   └─ 6. 次日开盘成交
 ```
 
-## 三、代码逐段详解 + backtrader 语法解析（本篇重点：做空）
+**为什么这样能"对冲"？** 假设大盘明天跌 3%：
 
-### 3.1 多空市值敞口参数
+| 部分 | 大致损益 |
+|---|---|
+| 多头 40% 仓位 × (−3%) | −1.2% |
+| 空头 40% 仓位 × (+3%)（做空，跌了赚） | +1.2% |
+| **合计** | **≈ 0**（大盘涨跌被抵消） |
+
+真正决定盈亏的，是"多头比空头**多涨**的那部分"——那就是 **Alpha**。
+
+---
+
+## 三、核心思路
+
+**市场中性策略的逻辑**：
+
+$$\text{组合收益} = \underbrace{\beta \cdot R_{market}}_{\text{市场涨跌（被对冲掉）}} + \underbrace{\alpha}_{\text{选股能力}} + \text{噪声}$$
+
+- 传统多头策略：赚 = 选股 + 市场 β；熊市里 β 会吃掉一切；
+- **多空对冲**：多头 + 空头，把 β 大致抵消，只留下 α。
+
+**本策略的构造**：
+
+| 部分 | 选谁 | 仓位 |
+|---|---|---|
+| 多头 | 动量**最强**的 10 只 | 净值的 40% |
+| 空头 | 动量**最弱**的 10 只 | 净值的 40% |
+
+**注意事项（很重要）**：
+
+1. **多头空头不能重叠**：如果样本太少导致重叠，策略直接跳过（代码里有 `if set(longs) & set(shorts): return`）；
+2. **总敞口 80% 而不是 100%**：留空间，避免极端行情把净值打到负数；
+3. **A 股做空是受限的**——见下面的诚实提示。
+
+> **⚠️ 这一篇必须打折看（本仓库最"理想化"的策略）**
+> 回测里 **`self.sell()` 就开出了空头**，隐含假设是：
+> - **券源无限**、随时能借到券（真实 A 股：融券标的有限、券源紧张）；
+> - **零融券成本**（真实：年化 8%~10% 的利息）；
+> - **现金立即可用**（做空得到的现金能马上买多头）。
+>
+> 这三条都会显著削弱真实收益。**代码注释里已明确写出这一点**——请务必带着这个前提读下面那张收益表。
+
+---
+
+## 四、算法结构
+
+```
+main() → load_index_members → load_universe → __CAL__ → run_strategy
+   │
+   └─ LongShort.on_rebalance(cur)（每月）
+         ├─ ① 熔断检查：getvalue() < startingcash × 0.40 → close_all + return
+         ├─ ② 算动量，排序
+         ├─ ③ longs = 前 10，shorts = 后 10
+         ├─ ④ 若两组重叠 → return
+         ├─ ⑤ capital_long = 净值×0.40÷10；capital_short 同理
+         ├─ ⑥ 先平掉不在两名单里的持仓
+         ├─ ⑦ 多头 → _target_size(+capital)
+         └─ ⑧ 空头 → _target_size(−capital)
+```
+
+---
+
+## 五、代码逐段详解
+
+### 5.1 参数
 
 ```python
+LOOKBACK = 60               # 动量回看期
+LONG_NUM = 10               # 多头只数
+SHORT_NUM = 10              # 空头只数
 LONG_EXPOSURE = 0.40        # 多头市值 / 净值
 SHORT_EXPOSURE = 0.40       # 空头市值 / 净值
-STOP_EQUITY_RATIO = 0.40    # 净值跌破初始资金 40% → 清仓停止
+STOP_EQUITY_RATIO = 0.40    # 净值跌破初始资金的该比例时停止交易
 ```
 
-多空各占净值 40%，总敞口 0.8 倍（保守）。比聚宽示例"满仓多空（各 1.0 倍）"稳健，避免极端行情把净值打到负数。
+### 5.2 熔断与选股
 
-### 3.2 做空在 backtrader 里如何实现 —— 负 `size`
+```python
+def on_rebalance(self, cur):
+    # 0) 风控保险丝：用【初始资金】而不是硬编码常量
+    if self.broker.getvalue() < self.broker.startingcash * STOP_EQUITY_RATIO:
+        self.close_all(cur)
+        print(f'  [{cur}] 净值跌破 {STOP_EQUITY_RATIO:.0%}，清仓停止交易')
+        return
 
-backtrader **原生支持做空**：当 `self.sell()` 的股数超过当前持仓，持仓 `size` 变负数，即空头。本策略用 `_target_size` 统一表达：
+    mom = {}
+    for d in self.tradables:
+        if not self.live(d, cur):
+            continue
+        closes = self.hist_close(d, self.p.lookback + 1)
+        if closes is None or closes[0] <= 0:
+            continue
+        mom[d._name] = closes[-1] / closes[0] - 1.0
+    if len(mom) < self.p.long_num + self.p.short_num:
+        return
+    ranked = sorted(mom, key=mom.get, reverse=True)
+    longs = ranked[:self.p.long_num]
+    shorts = ranked[-self.p.short_num:]
+    if set(longs) & set(shorts):        # 样本太少时可能重叠
+        return
+```
+
+| 细节 | 说明 |
+|---|---|
+| `self.broker.startingcash` | **不是**硬编码的数字。写死 `1_000_000` 的话，一旦改初始资金，熔断线就错了 |
+| `ranked[-short_num:]` | 取**最后 N 个**（动量最弱）= 空头标的 |
+| `set(longs) & set(shorts)` | 两组不能重叠，否则同一只票既买又卖 |
+
+### 5.3 目标仓位：正负号就是方向
+
+```python
+equity = self.broker.getvalue()
+capital_long = equity * self.p.long_exposure / len(longs)     # 每只多头的目标市值
+capital_short = equity * self.p.short_exposure / len(shorts)  # 每只空头的目标市值
+
+for d in self.tradables:                       # 先平掉不在名单里的
+    if d._name in longs or d._name in shorts:
+        continue
+    if self.getposition(d).size and self.live(d, cur):
+        self.close(d)
+
+for name in longs:
+    self._target_size(name, capital_long, cur)
+for name in shorts:
+    self._target_size(name, capital_short, cur, short=True)
+```
 
 ```python
 def _target_size(self, name, capital, cur, short=False):
@@ -77,125 +178,108 @@ def _target_size(self, name, capital, cur, short=False):
     price = d.close[0]
     if price <= 0:
         return
-    want = round_lot(capital / price)          # 目标股数（正数）
+    want = round_lot(capital / price)      # 目标股数（正数）
     if short:
-        want = -want                            # 空头：目标股数取负
-    delta = want - self.getposition(d).size     # 与目标之差
+        want = -want                        # ← 空头 = 负股数
+    delta = want - self.getposition(d).size
     if delta > 0:
-        self.buy(d, size=delta)                 # 差为正 → 买入补到目标
+        self.buy(d, size=delta)
     elif delta < 0:
-        self.sell(d, size=-delta)               # 差为负 → 卖出（超过 0 即转做空）
+        self.sell(d, size=-delta)
 ```
 
-要点：
-
-- **`self.getposition(d).size`** 是当前持仓股数，**正数=多仓，负数=空仓，0=无持仓**。
-- 若某股当前无持仓（`size=0`），而 `want` 是负数，`delta = -want < 0` → 走 `self.sell(d, size=-delta)`，卖出超过 0 → 形成负持仓 = 做空。无需任何"融券"配置，backtrader 引擎自动处理。
-- 平仓用 `self.close(d)`：无论多空，`close` 都把该标的持仓归零，方向自动判。
-
-### 3.3 做空时的现金与盈亏口径
-
-这是新手最容易晕的地方，逐条说清：
-
-- **账户总资产** = 现金 + Σ(各标的 `size × 现价`)。空头 `size<0`，贡献**负市值**。
-- **做空收到现金**：卖空时你"借券卖出"拿到现金，所以可用现金**变多**，这正是 a03 文件头注释说的"做空会收到现金，能买入更多多头"。
-- **空头盈亏方向**：股价下跌 → `size(负) × 更低价` 的负市值变小（绝对值变小）→ 总资产上升 = 盈利；与真实融券"先卖后买、跌了赚"方向一致。
-- **`d.close[0]`**：取当根收盘价（做空计算用的现价），`[0]`=当根，没问题。
-
-### 3.3.1 空头账本：一个具体数字例子
-
-设净值 100 万，对某股做空 `per_short = 100万 × 0.40 / 10 = 4万` 元目标市值，现价 20 元：
+**`delta` 这个写法是通用套路**：
 
 ```
-want = round_lot(40000 / 20) = 2000 股 → 取负 → -2000 股
-delta = -2000 - 0 = -2000
-→ self.sell(d, size=2000)       卖空 2000 股，收到现金 4 万
+delta = 目标股数 − 当前股数
+delta > 0 → 买入 delta 股
+delta < 0 → 卖出 |delta| 股
 ```
 
-此时账户状态：
+这样无论"从无到有""加仓""减仓""反手"都能用同一段代码处理。
 
-| 项目 | 数值 |
-|------|------|
-| 现金 | 增加 4 万（卖空收到钱） |
-| 该股持仓 `size` | `-2000`（空头） |
-| 该股负市值 | `-2000 × 20 = -4 万` |
-| 总资产 | 现金 + 多仓市值 - 4 万（不变，因收到现金抵消） |
-
-若之后股价跌到 18 元：负市值变为 `-2000 × 18 = -3.6 万`，总资产**上升 0.4 万** = 空头盈利。方向相反于多头，正是 Beta 中性对冲的来源。
-
-### 3.4 风险熔断（保险丝）
+### 5.4 做空在 backtrader 里长什么样
 
 ```python
-if self.broker.getvalue() < CASH * STOP_EQUITY_RATIO:
-    self.close_all(cur)
-    print(f'净值跌破 {STOP_EQUITY_RATIO:.0%}，清仓停止交易')
-    return
+self.sell(d, size=100)      # 无持仓时 → position.size 变成 -100（空头）
+self.buy(d, size=100)       # 有空头时 → 平掉空头，回到 0
 ```
 
-`self.broker.getvalue()` 返回当前总资产。一旦净值跌到初始资金 40% 以下，立即 `close_all`（平掉所有多空持仓）并跳过本次调仓——这是对"极端行情多空两头亏损、净值被击穿"的硬止损。聚宽版没有这个保险丝，本地版更稳健。
+| 概念 | 表现 |
+|---|---|
+| 空头持仓 | `self.getposition(d).size` 是**负数** |
+| 空头盈亏 | 价格下跌 → 持仓市值变负得更少 → 净值上升 |
+| 做空现金 | 默认做空会把现金**加**给你（相当于保证金交易），可用 `set_shortcash` 改 |
 
-### 3.4.1 持仓相关 API 速查
+---
 
-| API | 作用 |
-|-----|------|
-| `self.getposition(d).size` | 该标的持仓股数（正=多、负=空、0=无） |
-| `self.getposition(d).price` | 持仓成本均价 |
-| `self.getpositionbyname('510300')` | 按名取持仓 |
-| `self.close(d)` | 平掉该标的全部持仓（多空都归零，方向自动判） |
-| `if not self.position:` | 判断首个标的是否空仓（`size == 0`） |
+## 六、一次真实运行的轨迹
 
-本策略的 `close_all`（`PanelStrategy` 提供）就是遍历 `self.tradables`，对 `getposition(d).size != 0` 且 `live` 的标的调用 `self.close(d)`。
+```
+[btlab] 股票池：候选 40 只 → 数据可用 38 只
+[3/3] 开始 backtrader 回测 ...
+  [2022-04-01] 净值跌破 40%，清仓停止交易
+```
 
-### 3.5 `PanelStrategy` 与 `live()` 停牌过滤
+**如果看到这行**，说明历史上真的触发过熔断——它是"净值被腰斩"的直白证据。本策略的回撤是 −33.00%，还没到 60% 的线，所以通常不会触发。
 
-和 a02 一样继承 `PanelStrategy`，用 `self.live(d, cur)` 过滤停牌/未上市个股；股票池用 `load_universe` 剔除上市太晚的标的（候选 40 → 数据可用 35，日志可见）。动量计算同样用 `hist_close(d, lookback+1)` 的 序列语义，无未来函数。
+---
 
-### 3.6 索引方向复核
+## 七、与聚宽版的差异
 
-| 写法 | 含义 | 本策略用法 |
-|------|------|-----------|
-| `d.close[0]` | 当根收盘价 | 算现价、`_target_size` |
-| `closes[-1]`（list） | 最新一根收盘 | 动量分子（序列语义！） |
-| `closes[0]`（list） | 最旧一根收盘 | 动量分母 |
+| 维度 | 聚宽 | 本地版 |
+|---|---|---|
+| 做空 | `order_target_value(sec, -v)` | `self.sell(size=负数目标)` |
+| 融券成本 | 平台可配置 | **未建模**（诚实提示） |
+| 券源校验 | 平台可校验 | **未做** |
+| 熔断 | 自己写 | 自己写（用 `startingcash`） |
+| 股票池 | 历史成分股 | 当前成分股（幸存者偏差） |
 
-全程未出现 Line 正索引 `[1]`，无未来函数。
+---
 
-## 四、与聚宽版的差异
+## 八、回测结果怎么读
 
-| 维度 | 聚宽云端版 | backtrader 本地版 |
-|------|-----------|-------------------|
-| 做空表达 | `order_target_value(s, -市值)`（融券卖出） | **负 `size`**：`sell` 超过持仓 → `position.size<0`（本地直接表达空仓） |
-| 融券限制 | 受券源/标的/利息约束（回测已简化） | **完全理想化**：不计融券利息、不做券源校验（回测收益偏乐观） |
-| 多空敞口 | `leverage=1.0`，多空各满仓（总敞口 2 倍） | 各 0.40（总敞口 0.8 倍，保守） |
-| 风险熔断 | 无 | 净值跌破 40% 强制 `close_all` 停交易 |
-| 触发方式 | `run_monthly(rebalance, 1, time='09:30')` | `PanelStrategy` 的 `(年,月)` 变化检测 |
-| 股票池 | `get_index_stocks('000300')` + `filter_stocks`（ST/涨跌停） | `load_index_members` + `load_universe` + `live()` 过滤 |
-| 下单口径 | `order_target_value`（目标市值） | `round_lot` 后 `buy/sell(size=差额)`（目标股数） |
-| 数据来源 | 聚宽平台 | akshare 免费源（当前沪深300成分，幸存者偏差） |
+| 指标 | 数值 | 怎么理解 |
+|---|---|---|
+| 累计收益率 | **+17.66%** | 11 年半只有 17.66% |
+| 年化收益率 | **+1.45%** | 很低 |
+| 最大回撤 | **−33.00%** | 号称"对冲"，回撤却不小 |
+| 夏普比率 | **0.20** | 很差 |
+| 成交笔数 | **3288** | 全场最高——多空双边调仓，换手巨大 |
 
-核心差异是**做空机制**：聚宽靠"融券（`order_target_value` 传负）"表达，本地靠"负持仓"表达——二者盈亏方向一致，但本地不计融券成本，回测绝对收益会偏乐观，实盘需打折。
+**要点：**
 
-## 五、回测结果（真实数据）
+1. **它没有实现"市场中性"的理想效果**：回撤 −33%、夏普 0.20，说明多头空头的 β 并没有被很好地抵消（A 股多空两端的风格差异很大）；
+2. **换手 3288 笔是最大杀手**：每月双边调仓 20 只，成本持续放血；
+3. **真实世界会更差**：融券利息 8%~10% 还没算进去。
 
-区间 2015-01-05 ~ 2026-09-30（2855 个交易日），初始资金 100 万元，基准沪深300。数据来自 `results/logs/bt_a03_long_short.log`。
+> **教学价值**：这一篇教会你两件事——① 做空在代码里怎么写；② **"理论上对冲"和"实际对冲得住"是两回事**。真实的中性化组合需要严格的风险模型（行业、市值、风格都对齐），不是"买前 10 卖后 10"这么简单。
 
-| 指标 | 数值 |
-|------|------|
-| 累计收益率 | 17.66% |
-| 年化收益率 | 1.45% |
-| 基准累计收益率 | 19.66% |
-| 超额收益 | -2.01% |
-| 最大回撤 | -33.00% |
-| 夏普比率 | 0.20 |
-| 年化波动率 | 9.42% |
-| 日胜率 | 50.94% |
-| 总成交笔数 | 3288 笔 |
-| 累计换手率 | 9695.84% |
+---
 
-解读：多空对冲并**没有跑赢**沪深300（超额 -2.01%），夏普仅 0.20，是 5 篇里最弱的一篇。原因：动量因子在 A 股多头无效 + 空头也亏，Beta 中性没带来稳定 Alpha；且 3288 笔成交、9695% 换手意味着摩擦成本极高。但**回撤 -33.00% 与基准接近、波动 9.42% 偏低**，说明"多空抵消 Beta"在波动层面有效，只是选股 Alpha 没赚出来。结论：市场中性策略的难点从来不是"对冲"，而是"选股 Alpha 是否真存在"。
+## 九、易混点与常见错误
 
-## 六、改进方向（思考题）
+| 症状 | 原因 | 正确做法 |
+|---|---|---|
+| 熔断线算错 | 硬编码了初始资金 | 用 `self.broker.startingcash` |
+| 同一只票既买又卖 | long/short 名单重叠 | `if set(longs) & set(shorts): return` |
+| 空头方向搞反 | 忘了 `want = -want` | 空头用负股数 |
+| 以为回测的收益是真实的 | 没算融券成本/券源 | 明白这是理想化上界 |
+| 净值变成负数 | 没留缓冲、敞口太大 | 控制总敞口（本策略 40%+40%） |
 
-1. **更严格 Beta 中性**：用回归算每只股票 Beta，按 Beta 加权多空（而非简单等市值），或在行业内配对（`industry_map`），剥离行业 Beta。
-2. **多因子替代动量**：动量在 A 股易失效，可叠加估值/质量/低波因子（`value_panel` 取 PE/PB），做"多低估值空高估值"的基本面中性。
-3. **加止损与熔断细化**：除净值熔断外，对单只空头设 `buy_bracket` 止损腿，防止轧空（空头亏损无上限）；并对空头单独限制占比，避免单一票爆雷。
+---
+
+## 十、自测题（不写代码也能做）
+
+1. 为什么"买最强 10 只 + 卖最弱 10 只"能对冲掉大盘涨跌？它真的完全对冲了吗？
+2. 为什么这一篇的最大回撤（−33%）比"看起来更激进"的小市值策略（−29.58%）还大？
+3. 如果把融券利息（年化 9%）加进回测，收益会变成多少？（估算一下）
+
+---
+
+## 十一、改进方向（思考题）
+
+1. **行业/市值中性**：先按行业和市值分组，再在**组内**做多空（这才是真正的中性化）。
+2. **加融券成本**：用 `setcommission` 或资金曲线扣减模拟 8%~10% 的利息。
+3. **降低换手**：改成季度调仓，或加"排名掉出前 15/20 才换"的缓冲。
+4. **Beta 对冲**：改成"多头 40% + 做空股指期货 40%"，比个股做空更可行。

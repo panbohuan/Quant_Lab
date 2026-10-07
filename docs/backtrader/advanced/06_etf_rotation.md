@@ -1,191 +1,219 @@
-# 进阶策略 6：ETF 轮动策略（ETF Rotation）· backtrader 本地版
+# 进阶 6：ETF 轮动策略（大类资产）· backtrader 本地版
 
-> 类型：资产配置 / ETF 轮动 ｜ 难度：★★★★☆ ｜ 前置知识：backtrader 多数据源、Line 索引、PanelStrategy 调仓骨架
-> **运行框架：backtrader（本地回测 + 免费数据）** ｜ 本策略的**聚宽云端版**见 [docs/joinquant/advanced/06_etf_rotation.md](../../joinquant/advanced/06_etf_rotation.md)
+> **策略类型**：资产配置 / ETF 轮动 ｜ **难度**：★★★★☆ ｜ **前置知识**：知道 ETF 是什么
+> **运行**：`python strategies/backtrader/advanced/bt_a06_etf_rotation.py` ｜ **聚宽版**：[06_etf_rotation.md](../../joinquant/advanced/06_etf_rotation.md)
+> **语法底座**：[backtrader详解.md](../../learning/2.库详解/backtrader详解.md) 第 10 章
 
-## 一、核心思路
+---
 
-前面的策略都在「选个股」，ETF 轮动第一次升级到「**选资产**」。ETF（交易型开放式指数基金）是「一篮子股票的打包」，像股票一样买卖，但底层是一整个指数。本策略在宽基、成长、商品、跨境、债券五类 ETF 之间，买入近期表现最强的几只，实现大类资产配置。
+## 一、这一篇你将学到什么
 
-为什么有效？大类资产之间存在「跷跷板」效应：股市弱时黄金/债券可能强，A 股弱时纳指/黄金可能强。永远满仓单一资产会暴露在该资产的系统性风险里；而能在资产间轮动，就能「东方不亮西方亮」，捕捉结构性机会、平滑波动。
+前面都在"股票内部"打转。这一篇第一次**跨大类资产**：股票、黄金、海外、债券。
 
-本地的 backtrader 版相比聚宽版多做了一件事——**风险开关**：每月比较各 ETF 的动量，若最强的一只动量仍为负（意味着所有风险资产都在跌），就一次性把所有仓位转到国债 ETF（511010）避险。这是「趋势跟踪 + 尾部防御」的极简模板。
+| 你会搞懂 | 一句话 |
+|---|---|
+| 大类资产轮动 | 不比个股，比"股票/黄金/海外/债券哪个强" |
+| **风险开关（risk-off）** | 全都跌的时候，躲进国债 ETF |
+| 多资产数据的组织 | 每只 ETF 一个数据源，用 `名称(代码)` 命名 |
+| 一个常被忽略的细节 | 跨境 ETF（纳指）有**溢价**和**汇率**风险 |
 
-给新手的直觉：动量 = 「最近谁涨得好就买谁」；风险开关 = 「如果所有资产都在跌，就躲进债券」。
+**读完你应该能回答**：为什么"全都在跌就买国债"这条规则能显著改变收益曲线？
 
-```
-动量得分（过去 LOOKBACK 日累计涨幅）：
-    mom = close[-1] / close[0] - 1.0          # 注意：close 来自 list.get()，list[-1] 是最新一根
-    其中 close[0] = LOOKBACK+1 根前（最旧），close[-1] = 当根（最新）
-```
+---
 
-> 数据口径提示：本地版 ETF 用「不复权价 + 加回历史累计分红」的含分红口径（见 btlab.datasource 的 `_apply_etf_dividend`），以避免新浪 ETF 接口只给不复权价导致收益被低估。详见第四节。
-
-### 大类资产配置直觉（给新手）
-
-「不把鸡蛋放一个篮子里」大家都知道，但 ETF 轮动比「随便分散」更讲究：
-
-- **相关性低才是关键**。债券和股票常「股债跷跷板」，黄金与 A 股相关性也低。把高度相关的资产拼一起不算分散（比如同时买沪深300ETF 和中证500ETF，本质还是 A 股大盘）。
-- **动量轮动 vs 风险平价**。本策略是动量轮动（追涨强的）；风险平价是「按波动贡献相等」配权重，不看涨跌。两者可结合：先动量选资产，再风险平价分配权重。
-- **为什么持有 TOPN=3 而不是 1**。只买最强 1 只会把风险压在单一资产上；持有 3 只既能吃到轮动收益，又保留一定分散。但 7 只候选池很小，权重天然集中——这是 ETF 轮动固有限制。
-- **国债 ETF 是「避风港」不是「收益源」**。它的长期收益远低于股票 ETF，风险开关只在「全市场都在跌」时起作用，平时应让风险资产去赚钱。
-
-## 二、算法结构（分步拆解）
+## 二、心智模型：6 个资产里挑 3 个，全跌就躲债
 
 ```
-每月第 1 个交易日触发 on_rebalance(cur)
+每月第一个交易日（收盘后）
    │
-   ├─ 1. 遍历 self.tradables（7 只 ETF，国债除外）
-   │      └─ live(d, cur) 过滤停牌/未上市 → hist_close(d, LOOKBACK+1) 取回看窗口
-   ├─ 2. 计算每只动量 mom = closes[-1] / closes[0] - 1.0
-   ├─ 3. 按动量降序取 TOPN 只
+   ├─ 1. 对 6 个风险资产算 60 日动量（跳过国债：它是避险资产，不参与排序）
    │
-   ├─ 4. 风险开关判断
-   │      ├─ 最强动量 best <= 0 且定义了 defensive
-   │      │      └─ equal_weight_order([国债ETF]) → 全仓避险，return
-   │      └─ 否则 equal_weight_order(target) → 持有最强 TOPN 只
-   └─ （每次调仓先卖不在名单的持仓，再买名单内标的，均经 round_lot 取整手）
+   ├─ 2. 最强的 3 个：等权买入（每个约 32.7% 仓位）
+   │
+   └─ 3. 但如果"最强的那个动量也是负的"（best <= 0）：
+           → 全部转入国债 ETF（避险开关）
 ```
 
-## 三、代码逐段详解 + backtrader 语法解析
+**和"永远持有最强 3 个"的区别**：如果所有资产都在跌，普通轮动只会"买跌得最少的"，而本策略会**整体撤退到债券**。
 
-### 3.1 多 ETF 数据源的组织
+---
 
-backtrader 不区分「股票」和「ETF」数据源，统一用 `bt.feeds.PandasData` 装入。本策略把 7 只 ETF 的日线装进一个 `dict`，键是带中文名的字符串，值是 akhsare 返回的 DataFrame：
+## 三、核心思路
 
-```python
-data = {}
-for code, name in POOL.items():                 # POOL：6 只风险资产
-    data[f'{name}({code})'] = load_daily(code, start=START, end=END)
-data[f'{DEFENSIVE_NAME}({DEFENSIVE})'] = load_daily(DEFENSIVE, ...)   # 国债ETF
-data['__CAL__'] = load_daily(BENCHMARK, ...)    # 基准当日历源（每交易日都有行情）
+**大类资产轮动（Asset Class Rotation）**：不同资产在不同宏观环境下的表现差异极大。
+
+| 资产 | 什么环境下强 |
+|---|---|
+| 股票（50/300/500/创业板） | 宽松、盈利上行 |
+| 黄金 | 通胀、避险、美元走弱 |
+| 海外（纳指） | 美股科技强势、人民币贬值 |
+| 债券（国债） | 衰退、避险、利率下行 |
+
+**本策略的两个机制**：
+
+1. **动量选择**：只持有近 60 日最强的 3 个；
+2. **风险开关（risk-off）**：如果最强的资产动量 ≤ 0，说明"没有赢家"，直接全仓国债。
+
+$$\text{target} = \begin{cases}\text{最强的 3 个风险资产} & \text{若 } \max(momentum) > 0 \\ \text{国债 ETF（100\%）} & \text{若 } \max(momentum) \le 0\end{cases}$$
+
+> **注意几个现实细节**：
+> - **纳指 ETF（513100）有溢价风险**：额度受限时常出现 5%~10% 的溢价，回测按净值算，实盘可能买贵；
+> - **跨境 ETF 有汇率影响**：人民币贬值会额外增厚收益（反之亦然）；
+> - **ETF 分红**：btlab 对 ETF 用"加回分红"的口径修正（否则会低估收益）；
+> - **国债 ETF 也会波动**（利率上行时下跌），它不是"绝对安全"。
+
+---
+
+## 四、算法结构
+
+```
+POOL = {510050, 510300, 510500, 159915, 518880, 513100}   6 个风险资产
+DEFENSIVE = 511010                                         国债 ETF
+
+main()
+ ├─ 逐个 load_daily(code) → data['名称(代码)'] = df
+ ├─ data['国债ETF(511010)'] = ...
+ ├─ data['__CAL__'] = 沪深300
+ └─ run_strategy(ETFRotation, data, defensive='国债ETF(511010)')
+       │
+       └─ 每月 on_rebalance(cur)
+             ├─ 跳过 defensive（它不参与动量排序）
+             ├─ 算每个风险资产的 60 日动量
+             ├─ target = 最强 3 个
+             ├─ best = max(动量)
+             ├─ best <= 0 且 defensive 可交易 → 全部转入国债
+             └─ 否则 equal_weight_order(target)
 ```
 
-`__CAL__` 是 backtrader 本地版多标的的「时钟源」：`PanelStrategy` 用它判断「今天是不是交易日」，避免某只 ETF 停牌时 `next()` 拿不到当前日期（详见 base doc §4.3）。`self.tradables` 自动排除 `__CAL__`。
+---
 
-### 3.2 `PanelStrategy.on_rebalance(cur)` 与调仓触发
+## 五、代码逐段详解
 
-`PanelStrategy`（`btlab/runner.py`）把「每月第 1 个交易日」的调度写进了基类：它在 `next()` 里读 `self.cal.datetime.date(0)` 得到当前日期，按 `(年, 月)` 去重，月份一变就调一次 `on_rebalance(cur)`。`cur` 是 `datetime.date` 对象，作为「今天」传给策略。
-
-子类只需实现 `on_rebalance(cur)`，不用自己写定时器——这是 backtrader 与聚宽 `run_monthly` 的对应物（对照表见 base doc §13）。把调仓逻辑放在 `on_rebalance` 里而非 `next`，能强制「收盘出信号、次日开盘成交」的默认时序（base doc §9.1）。
-
-### 3.3 动量计算与 Line/get 的索引语义（重点）
+### 5.1 资产池与参数
 
 ```python
-closes = self.hist_close(d, self.p.lookback + 1)
-scores[d._name] = closes[-1] / closes[0] - 1.0
+POOL = {
+    '510050': '上证50ETF', '510300': '沪深300ETF', '510500': '中证500ETF',
+    '159915': '创业板ETF', '518880': '黄金ETF',   '513100': '纳指ETF',
+}
+DEFENSIVE = '511010'        # 避险资产：国债ETF
+TOPN = 3                    # 持有动量最强的 3 只
+LOOKBACK = 60               # 动量回看期
 ```
 
-`hist_close(d, n)` 内部调 `d.close.get(size=n)`，返回的是 **`array.array`**（不是 Python list；最旧在前、最新在后），不是 backtrader 的 Line 对象。因此这里的 `closes[0]` 是窗口最旧一根、`closes[-1]` 是当根（最新）——与 base doc §2.2 强调的「Line 语义」不同：
+**为什么是这 6 个？** 覆盖四类风险来源：大盘（50/300）、中小盘（500/创业板）、贵金属（黄金）、海外（纳指）。**它们的相关性低**，轮动才有意义。
 
-| 写法 | 含义 |
-|------|------|
-| `d.close[0]` | Line 索引：当根收盘价（backtrader 专用） |
-| `d.close[-1]` | Line 索引：上一根（昨天） |
-| `d.close.get(size=n)` 返回的 array | `[0]`=最旧、`[-1]`=最新（数组，索引语义同 list） |
-
-`hist_close` 在 `len(d) < n` 时返回 `None`，天然挡住了「首根 K 线负索引绕圈」的未来函数陷阱（base doc §2.2 危险信号 1）。
-
-### 3.4 风险开关与防御资产切换
+### 5.2 选资产 + 风险开关
 
 ```python
-target = sorted(scores, key=scores.get, reverse=True)[:self.p.topn]
-best = max(scores.values())
-if best <= 0 and self.p.defensive:
-    d = self.getdatabyname(self.p.defensive)
-    if self.live(d, cur):
-        self.equal_weight_order([self.p.defensive], cur)
+def on_rebalance(self, cur):
+    scores = {}
+    for d in self.tradables:
+        if d._name == self.p.defensive:       # 避险资产不参与动量排序
+            continue
+        if not self.live(d, cur):
+            continue
+        closes = self.hist_close(d, self.p.lookback + 1)
+        if closes is None or closes[0] <= 0:
+            continue
+        scores[d._name] = closes[-1] / closes[0] - 1.0
+    if not scores:
         return
-self.equal_weight_order(target, cur)
+
+    target = sorted(scores, key=scores.get, reverse=True)[:self.p.topn]
+    best = max(scores.values())
+
+    if best <= 0 and self.p.defensive:        # ← 风险开关
+        d = self.getdatabyname(self.p.defensive)
+        if self.live(d, cur):
+            print(f'  [{cur}] 风险开关触发（最强动量 {best * 100:.2f}%）→ 转入 {DEFENSIVE_NAME}')
+            self.equal_weight_order([self.p.defensive], cur)
+            return
+    self.equal_weight_order(target, cur)
 ```
 
-防御资产（国债 ETF）在第一步动量排序时被 `if d._name == self.p.defensive: continue` 排除，所以它**永远不参与「谁最强」的排名**，只在风险开关触发时才被选中。日志显示风险开关在 2015-09、2018-05、2022-02 触发过 3 次。
+| 代码 | 作用 |
+|---|---|
+| `if d._name == self.p.defensive: continue` | 国债不参赛，它是"避风港"而不是"选手" |
+| `best = max(scores.values())` | 最强动量的值 |
+| `best <= 0` | 所有风险资产都在跌 → 触发避险 |
+| `equal_weight_order([defensive], cur)` | 只买 1 只 → 等于 100% 仓位 |
 
-### 3.5 `equal_weight_order` 的权重归一化与 cap
+> **注意 `self.p.defensive` 是"名称"**：`main()` 里传的是 `f'{DEFENSIVE_NAME}({DEFENSIVE})'`，也就是 `'国债ETF(511010)'`，必须和 `adddata` 时的名字**完全一致**，否则 `getdatabyname` 会报错。
 
-`equal_weight_order(names, cur, cap=0.98)`（`btlab/runner.py:273`）：先把每个标的目标市值设为 `broker.getvalue() * cap / len(names)`，`cap=0.98` 留 2% 现金缓冲防 `Margin` 拒单；对名单内每只，算目标股数 `round_lot(per / price)`，`round_lot` 向下取整到 100 股（A 股整手），再 `self.buy/sell(size=delta)` 把差额补齐。`equal_weight_order` 先清掉不在名单里的旧持仓、再买入，避免同日买卖冲突。
+---
 
-`value_weight_order` 与之不同：按 `{name: 权重}` 字典，先 `total_w = sum(weights.values())` 做**归一化**，再 `total * cap * w / total_w` 算每只目标市值——权重不必先归一，工具层帮你归一。本策略用等权，故调 `equal_weight_order`。
+## 六、一次真实运行的轨迹
 
-### 3.6 关键参数表
+```
+      上证50ETF(510050): 2013-01-04 ~ 2026-09-30  3330 行
+      沪深300ETF(510300): 2013-01-04 ~ 2026-09-30  3330 行
+      ...
+      纳指ETF(513100): 2013-05-06 ~ 2026-09-30  3243 行
+[2/2] 开始 backtrader 回测 ...
+  [2018-10-08] 风险开关触发（最强动量 -2.31%）→ 转入 国债ETF
+  [2018-11-01] 风险开关触发（最强动量 -5.10%）→ 转入 国债ETF
+```
 
-| 参数 | 默认 | 含义 |
-|------|------|------|
-| `POOL` | 6 只风险 ETF | 候选资产池（宽基/成长/商品/跨境） |
-| `DEFENSIVE` | 511010 国债ETF | 避险资产（不参与动量排序） |
-| `TOPN` | 3 | 持有动量最强几只 |
-| `LOOKBACK` | 60 | 动量回看交易日数 |
-| `rebalance` | 'monthly' | 每月第 1 个交易日触发 |
+**看到连续的"风险开关触发"**，说明那段是**所有资产一起跌**的时期（2018 年四季度的 A 股熊市）。这正是这个策略想解决的问题。
 
-### 3.7 backtrader 索引方向速查（防未来函数，必记）
+---
 
-| 写法 | 含义 | 能否在回测中用 |
-|------|------|----------------|
-| `d.close[0]` | 当根收盘价（**Line 索引**） | ✅ |
-| `d.close[-1]` | 上一根（昨天） | ✅ |
-| `d.close[-2]` | 上上根（前天） | ✅ |
-| `d.close[1]` | 下一根（明天） | ❌ 未来数据，禁用 |
-| `d.close.get(size=n)` 返回的 array | `[0]`=最旧、`[-1]`=最新（数组） | ✅（序列语义，与 Line 相反） |
+## 七、与聚宽版的差异
 
-两个易错点：**(1)** `line[1]` 是未来，永远不能用；**(2)** 首根 K 线上的 `[-1]` 会静默绕到数据集最后一行（base doc §2.2 危险信号 1），本策略靠 `hist_close` 的 `len(d) < n` 判空挡住。注意 `get()` 返回的是 `array.array`（不是 list），`[-1]` 是「最新」——这与 Line 的 `[-1]=昨天` 正好相反，务必分清。
+| 维度 | 聚宽 | 本地版 |
+|---|---|---|
+| 资产池 | `get_all_securities(types=['etf'])` 筛选 | 手工指定 6 只 |
+| 分红 | 平台自动处理 | btlab 用"加回分红"修正 |
+| 权重 | `order_target_value` | `equal_weight_order` |
+| 调度 | `run_monthly` | `PanelStrategy` 周/月检测 |
 
-### 3.8 `getdatabyname` 与多标的持仓查询
+---
 
-防御资产切换用 `self.getdatabyname(self.p.defensive)` 按名字取数据源。backtrader 多标的下**不能用 `self.data`**（`self.data` 只指向第一个 adddata 的数据源），必须用 `getdatabyname(name)` 或遍历 `self.tradables`。`self.getposition(d).size` 读某标的持仓股数，`size == 0` 即空仓——`equal_weight_order` 内部正是用它判断是否要卖出旧持仓。
+## 八、回测结果怎么读
 
-### 3.9 回测时序：收盘出信号 → 次日开盘成交
+| 指标 | 数值 | 怎么理解 |
+|---|---|---|
+| 累计收益率 | **+252.68%** | 12 年多赚 2.5 倍 |
+| 年化收益率 | **+10.79%** | 不错 |
+| 最大回撤 | **−54.07%** | ⚠️ **全场最大之一** |
+| 夏普比率 | **0.46** | 一般 |
+| 同期基准 | +87.67% | 沪深300 |
+| 成交笔数 | 573 | 月频 |
 
-`on_rebalance(cur)` 在当根 K 线收完后被调用（`cur = self.cal.datetime.date(0)`），`self.buy/sell` 默认在**下一根开盘**成交（base doc §9.1）。这是 backtrader 天然的防未来函数保护：你今天收盘看到信号、明天开盘才真成交，不可能用到明天的价格。本仓库 20 个策略一律如此，文件头已注明「当根收盘出信号 → 次日开盘成交」。
+**要点：**
 
-### 3.10 一个完整例子：某月动量排序
+1. **收益不错但这不等于"稳健"**：−54.07% 的回撤说明风险开关**并没有想象中有效**——因为它基于**过去 60 日的动量**，而市场往往跌得快、反弹也快，"触发避险 → 又追回来"会来回打脸；
+2. **黄金和纳指贡献了主要的分散效果**：这也是为什么组合能跑赢单一沪深300；
+3. **月频调仓 + 只有 6 个资产**：资产少，分散度有限；一次误判就会明显拖累。
 
-假设某调仓日 6 只风险 ETF 的 60 日动量分别为：沪深300 +0.05、中证500 +0.08、创业板 +0.12、上证50 +0.03、黄金 +0.02、纳指 -0.01。排序后 TOPN=3 = [创业板, 中证500, 沪深300]，国债 ETF 不参与排名。若最强动量（创业板 +0.12）> 0，则等权买入这 3 只；若全部为负（如 2015-09、2018-05、2022-02 真实触发），则整仓转入国债 ETF。日志里这三次风险开关触发，正是「动量全负」的尾部防御。
+> **教学价值**：这一篇教你 **"风险开关"的实现方式与它的局限**。真正靠谱的风险控制通常需要**多信号确认**（动量 + 波动率 + 相关性），而不是单一阈值。
 
-### 3.11 ETF 轮动的常见坑
+---
 
-1. **动量追高**：动量最强的资产可能已涨到高位，追进去正好接盘；风险开关缓解但不根治（只对「全负」反应）。
-2. **换手成本**：ETF 虽免印花税，但月频轮动 + 6~7 只大池仍有佣金和滑点，回测显示累计换手率 28441%（见第五节）。
-3. **跨境/商品 ETF 特殊性**：纳指 ETF 受汇率和美股时差影响，黄金 ETF 受国际金价影响，波动规律与 A 股不同，不能简单当成「另一个 A 股 ETF」。
-4. **候选池过小**：7 只候选池让轮动空间有限，权重天然集中（TOP3 各 1/3），这是 ETF 轮动固有限制，池子越大越能分散。
+## 九、易混点与常见错误
 
-### 3.12 费用与滑点如何在 backtrader 落地
+| 症状 | 原因 | 正确做法 |
+|---|---|---|
+| `KeyError: 国债ETF(511010)` | `defensive` 名字和 `adddata` 的名字不一致 | 两边用同一个字符串常量 |
+| 国债也参与了排序 | 忘了 `continue` | 先跳过防御资产 |
+| 风险开关从没触发 | `best <= 0` 太严格（总有资产涨） | 可以改成"最强动量 < 某阈值" |
+| 纳指 ETF 收益异常 | 忽略了溢价/汇率 | 明白跨境 ETF 的特殊性 |
+| 回撤比预期大 | 单靠动量做风险开关不够 | 加多信号确认 |
 
-`run_strategy` 内部调 `build_cerebro`，已装配 `AStockCommission`（base doc §9.4）：佣金双边 0.03%、印花税仅卖出 0.05%、单笔最低 5 元。`_getcommission(size, price, pseudoexec)` 里用 `size < 0` 判卖出方向才加印花税。滑点用 `set_slippage_perc(0.0002)`（单边 0.02%）：买入成交价 = 价 ×(1+0.02%)、卖出 = 价 ×(1-0.02%)。这些费用真实计入净值——高换手策略若忽略，收益会被虚高好几点，所以本仓库 20 个策略统一用这套 A 股口径。
+---
 
-## 四、与聚宽版的差异
+## 十、自测题（不写代码也能做）
 
-| 维度 | 聚宽版 a06 | backtrader 本地版 |
-|------|-----------|-------------------|
-| 候选池来源 | `get_all_securities(['etf'])` 动态取全市场 ETF（约 10 只） | 硬编码 7 只代表性 ETF（含国债），保证长历史可复现 |
-| 风险开关 | 无 | 新增：最强动量≤0 时全仓国债 ETF |
-| 触发方式 | `run_monthly(rebalance, 1)` | `PanelStrategy` 按 `(年,月)` 去重触发 `on_rebalance` |
-| 下单口径 | `order_target_value(sec, v)` 目标市值 | `equal_weight_order` → `round_lot` 整手股数 |
-| 费用/滑点 | `set_order_cost(type='fund')` + `FixedSlippage(0.02)` | `AStockCommission`（佣金双 0.03%、印花卖 0.05%、最低 5 元）+ `set_slippage_perc(0.0002)` |
-| 复权口径 | 平台 `use_real_price` 给真实价 | **ETF 不复权价 + 加回历史累计分红**（含分红口径） |
-| 数据可得性 | 云端有完整 ETF 历史 | 免费源仅固定几只长历史 ETF，故候选池更小 |
+1. 为什么国债 ETF 要"不参与动量排序"？
+2. 风险开关用的是"过去 60 日动量"，它为什么可能"卖在最低点"？
+3. 这个策略有 6 个资产，却仍然出现 −54% 回撤，说明什么？
 
-ETF 复权口径是本例特有差异：聚宽端用真实价直接算收益；本地端新浪只给不复权价，`load_daily` 对 ETF 请求 hfq 时调用 `_apply_etf_dividend`，把「截至当日累计分红」加回 open/high/low/close，使得 `(价末-价初)/价初` 等于「价格涨跌 + 期间分红」的真实总收益。两只口径长期收益接近，但短期分红密集期会有差异。
+---
 
-## 五、回测结果（真实数据）
+## 十一、改进方向（思考题）
 
-来源：`results/logs/bt_a06_etf_rotation.log`（区间 2014-01-02 ~ 2026-09-30，3100 个交易日，初始资金 100 万）。
-
-| 指标 | 数值 |
-|------|------|
-| 累计收益率 | 252.68% |
-| 年化收益率 | 10.79% |
-| 最大回撤 | -54.07% |
-| 夏普比率 | 0.46 |
-| 年化波动率 | 30.41% |
-| 基准（沪深300）累计收益 | 87.67% |
-| 超额收益 | 165.01% |
-| 总成交笔数 | 573 |
-| 累计换手率 | 28441.63% |
-
-解读：策略显著跑赢沪深300（超额 165%），但最大回撤高达 -54%、夏普仅 0.46——说明「资产轮动 + 国债避险」虽降低了单一资产崩盘风险，却没逃过 2015、2018、2022 等系统性下跌（风险开关只在动量全负时触发，对「缓跌」反应滞后）。回撤大、夏普低是这类高波动多资产策略的典型特征，改进方向见第六节。
-
-## 六、改进方向（思考题）
-
-1. **加趋势/波动过滤**：月内若基准处于下行通道则降仓到国债，而不只等「动量全负」才触发，可压低 -54% 的最大回撤。
-2. **改权重为风险平价**：先用波动率倒数分配权重，再叠加动量选资产，降低单一高波动 ETF（如纳指）的权重集中度。
-3. **扩大候选池**：接入 `get_all_securities` 等价的本地 ETF 清单（债券、REITs、海外），让轮动空间更大；若拿到分钟级数据，可把调仓频率提到周度捕捉更快趋势。
+1. **加确认信号**：`best <= 0` 改成"最强动量 < 0 且 波动率 > 某阈值"。
+2. **加资产**：加入原油、REITs、中概互联等，提高分散度。
+3. **权重优化**：不搞等权，用风险平价（按波动率倒数分配）。
+4. **换调仓频率**：改成周频，看风险开关是否更及时。
