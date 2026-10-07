@@ -97,7 +97,7 @@ if len(closes) < self.p.lookback + 1:
     return
 ```
 
-- `get(size=N)` 返回**普通 Python list**，元素按时间**最旧在前、最新在后**排列。
+- `get(size=N)` 返回 **`array.array`**（**不是 Python list**），元素按时间**最旧在前、最新在后**排列。
 - 这里取 `lookback + 1` 根，是为了能算出 `lookback` 个收益率（相邻两根相除需要多一根）。
 - **关键陷阱**：`get()` 返回的是 list，不是 Line。list 的 `[-1]` 是"最后一个 = 最新一根"，和 Line 的 `[-1]`（= 上一根/昨天）语义**完全不同**。本例全程用 pandas 处理 list，没有触碰 Line 负索引，所以不存在绕圈风险。
 - `len(closes) < lookback + 1` 是**手动挡未来函数**：数据不够 N 根就算不出波动率，直接 return。等价于指标 `minperiod` 的防护作用。
@@ -132,7 +132,7 @@ self.order_target_percent(target=w)       # w 是占总资产的比例，0.5 = �
 
 ### 3.5 索引方向自检（全仓库铁律）
 
-本策略只用到 `close.get(size=N)`（list 语义）和 `datetime.date(0)`（当根）。重申：Line 索引 **`[0]`=当根、`[-1]`=昨天、`[-2]`=前天、`[1]`=明天（未来，禁用）**。首根 K 线上 `[-1]` 会静默绕到数据集末行（无声未来函数），本例靠"数据不足就 return"挡住。
+本策略只用到 `close.get(size=N)`（序列语义）和 `datetime.date(0)`（当根）。重申：Line 索引 **`[0]`=当根、`[-1]`=昨天、`[-2]`=前天、`[1]`=明天（未来，禁用）**。首根 K 线上 `[-1]` 会静默绕到数据集末行（无声未来函数），本例靠"数据不足就 return"挡住。
 
 ### 3.6 `stop()` 收尾打印
 

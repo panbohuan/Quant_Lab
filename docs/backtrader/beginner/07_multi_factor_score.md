@@ -69,7 +69,7 @@ class MultiFactorScore(PanelStrategy):
 - **行情类（动量）**：每根 K 线实时算，来自 backtrader 数据源 `self.hist_close`。
 - **基本面类（PB / 市值 / ROE）**：用 `value_panel` / `roe_panel` 在 `__init__` 一次性预拼成面板，调仓时切片。
 
-关键差异在于 **`roe_panel(codes, lag_days=45)`**：季报在报告期结束后约 1~1.5 个月才公告，本地免费源只有"报告期"没有"公告日"。`roe_panel`（§17.2）把 ROE 序列的索引整体后移 45 天（`s.index = s.index + pd.Timedelta(days=lag_days)`），模拟"公告之后才能用"的约束——**这是本地版防未来函数的关键一步**，否则会提前用上还没发布的财报。
+关键差异在于 **`roe_panel(codes, lag_days=45)`**：季报在报告期结束后约 1~1.5 个月才公告，本地免费源只有"报告期"没有"公告日"。`roe_panel`（§14.2）把 ROE 序列的索引整体后移 45 天（`s.index = s.index + pd.Timedelta(days=lag_days)`），模拟"公告之后才能用"的约束——**这是本地版防未来函数的关键一步**，否则会提前用上还没发布的财报。
 
 ### 3.2 z-score 工具函数
 
@@ -79,7 +79,7 @@ def zscore(s):
     return (s - s.mean()) / (s.std() + 1e-12)
 ```
 
-分母 `+ 1e-12` 防止某因子所有值相等、标准差为 0 时除零报错（浮点保护，详见 `backtrader详解` §18 思路）。
+分母 `+ 1e-12` 防止某因子所有值相等、标准差为 0 时除零报错（浮点保护，详见 `backtrader详解` §15 思路）。
 
 ### 3.3 `on_rebalance`：四因子合成
 
@@ -107,7 +107,7 @@ for d in self.tradables:
 mom = pd.Series(mom, dtype=float)
 ```
 
-`closes` 是 Python list，`closes[-1]` 是**最新收盘**（今天）、`closes[0]` 是最旧（60 天前）。这里绝不能用 Line 的 `close[1]`（那是明天）。`hist_close` 已用 `len(d) < n` 守卫，只返回已走完的 K 线。
+`closes` 是 `array.array`（不是 Python list），`closes[-1]` 是**最新收盘**（今天）、`closes[0]` 是最旧（60 天前）。这里绝不能用 Line 的 `close[1]`（那是明天）。`hist_close` 已用 `len(d) < n` 守卫，只返回已走完的 K 线。
 
 **(3) 四因子对齐**
 
@@ -139,13 +139,13 @@ names = score.sort_values(ascending=False).index[:self.p.topn].tolist()
 self.equal_weight_order(names, cur)
 ```
 
-四个 z-score 按方向带正负号相加，降序取前 TOPN。`equal_weight_order` 的先卖后买、整手取整、`cap=0.98` 缓冲逻辑与策略 6 完全一致（§三 / `backtrader详解` §7.4、§13）。
+四个 z-score 按方向带正负号相加，降序取前 TOPN。`equal_weight_order` 的先卖后买、整手取整、`cap=0.98` 缓冲逻辑与策略 6 完全一致（§三 / `backtrader详解` §9.1、§9.4）。
 
 ### 3.4 防未来函数的三道闸门
 
 1. **`asof(panel, cur)`**：三张基本面面板只取 `≤ cur` 的行，且 `roe_panel` 已后移 45 天；
 2. **`hist_close` 的长度守卫**：动量只用已收盘的 K 线；
-3. **backtrader 默认成交时点**（§5.6）：`on_rebalance` 在当根收盘后触发，订单**次日开盘**成交，信号不回踩未来。
+3. **backtrader 默认成交时点**（§9.1）：`on_rebalance` 在当根收盘后触发，订单**次日开盘**成交，信号不回踩未来。
 
 ### 3.5 `PanelStrategy` 的月份调度与 `__CAL__` 时钟
 

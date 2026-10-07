@@ -59,7 +59,7 @@ return {
 }
 ```
 
-关键：`c20`/`vols` 来自 `hist_close`/`volume.get`，返回的是 **Python list**，所以 `c20[-1]` = 当根（最新）、`c20[0]` = 21 根前（最旧）——这是 list 语义，与 backtrader Line 的 `[0]=当根、[-1]=昨天` 不同（base doc 5.1）。`vol_ratio` 用 `vols[-5:]`（最近 5 天）除以全段均值，衡量「近期是否放量」。
+关键：`c20`/`vols` 来自 `hist_close`/`volume.get`，返回的是 **array（`array.array`）**，所以 `c20[-1]` = 当根（最新）、`c20[0]` = 21 根前（最旧）——这是 序列语义，与 backtrader Line 的 `[0]=当根、[-1]=昨天` 不同（base doc §2.2）。`vol_ratio` 用 `vols[-5:]`（最近 5 天）除以全段均值，衡量「近期是否放量」。
 
 `pb`/`mv` 用 `asof(self.pb, cur)` 取「不晚于 cur」的最新估值——防未来函数（见 a07 第三节）。若某股当天没有估值（NaN）则留空，后面截面 z-score 时再处理。
 
@@ -113,7 +113,7 @@ names = order[:self.p.topn]
 self.equal_weight_order(names, cur)
 ```
 
-取预测收益最高的 TOPN 只等权买入（先清旧仓、再整手补齐，base doc 7.4 / runner.py:273）。
+取预测收益最高的 TOPN 只等权买入（先清旧仓、再整手补齐，base doc §5.6 / runner.py）。
 
 ### 3.5 关键参数表
 
@@ -133,9 +133,9 @@ self.equal_weight_order(names, cur)
 | `d.close[-1]` | 上一根（昨天） | ✅ |
 | `d.close[-2]` | 上上根（前天） | ✅ |
 | `d.close[1]` | 下一根（明天） | ❌ 未来数据，禁用 |
-| `d.volume.get(size=n)` 返回的 list | `list[0]`=最旧、`list[-1]`=最新 | ✅（list 语义，与 Line 相反） |
+| `d.volume.get(size=n)` 返回的 array | `[0]`=最旧、`[-1]`=最新（数组） | ✅（序列语义，与 Line 相反） |
 
-本策略特征用 `c20[-1]/c20[0]-1`、`vols[-5:]`（`c20`/`vols` 来自 `hist_close`/`get` 返回的 list，`[-1]`=最新）；标签确认时用 `d.close[0]`（确认日当根）。两个易错点：**(1)** `line[1]` 是未来，禁用；**(2)** 首根 K 线 `[-1]` 会绕到数据集末尾（base doc 5.1），靠 `hist_close` 的 `len(d)<n` 判空挡住。
+本策略特征用 `c20[-1]/c20[0]-1`、`vols[-5:]`（`c20`/`vols` 来自 `hist_close`/`get` 返回的 array，`[-1]`=最新）；标签确认时用 `d.close[0]`（确认日当根）。两个易错点：**(1)** `line[1]` 是未来，禁用；**(2)** 首根 K 线 `[-1]` 会绕到数据集末尾（base doc §2.2），靠 `hist_close` 的 `len(d)<n` 判空挡住。
 
 ### 3.7 滚动扩窗：为什么标签必须「滞后确认」
 
@@ -148,7 +148,7 @@ self.equal_weight_order(names, cur)
 
 ### 3.9 回测时序与 ML 因子常见坑
 
-`on_rebalance(cur)` 在当根收盘后调用，`self.buy/sell` 默认**下一根开盘**成交（base doc 5.6），天然防未来。ML 因子坑：(1) **过拟合**——月频重训 + 40 只大池，样本内特征重要性稳定不代表样本外有效，需 Purged K-Fold 验证；(2) **换手成本**——回测累计换手率 45115%（见第五节），费率或冲击成本稍严苛收益就缩水；(3) **标签泄漏**——务必用 3.7 的滞后确认，切勿用 `line[+HORIZON]` 直接算标签。
+`on_rebalance(cur)` 在当根收盘后调用，`self.buy/sell` 默认**下一根开盘**成交（base doc §9.1），天然防未来。ML 因子坑：(1) **过拟合**——月频重训 + 40 只大池，样本内特征重要性稳定不代表样本外有效，需 Purged K-Fold 验证；(2) **换手成本**——回测累计换手率 45115%（见第五节），费率或冲击成本稍严苛收益就缩水；(3) **标签泄漏**——务必用 3.7 的滞后确认，切勿用 `line[+HORIZON]` 直接算标签。
 
 ## 四、与聚宽版的差异
 

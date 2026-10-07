@@ -86,7 +86,7 @@ def on_rebalance(self, cur):
 
 - `self.tradables`：由 `PanelStrategy.__init__` 自动生成，是**排除了 `__CAL__` 日历源之外的所有数据源**。每个元素 `d` 是一个 backtrader 数据源对象。
 - `self.live(d, cur)`：判断这只票**今天有没有行情**。`return len(d) > 0 and d.datetime.date(0) == cur`——停牌或未上市时它的时间会停在旧日期，与 `cur` 不一致，据此跳过。这是多标的回测的必要防护。
-- `self.hist_close(d, n)`：取标的最近 `n` 个收盘价（**含今日**），内部用 `d.close.get(size=n)`。注意 `get(size=n)` 返回普通 list，**最旧在前、最新在后**，所以 `closes[0]` 是 N 天前、`closes[-1]` 是今天。不足 n 个返回 `None`。这里取 `lookback+1` 根，用 `closes[-1]/closes[0]-1` 得到过去 `lookback` 个交易日的区间收益率。
+- `self.hist_close(d, n)`：取标的最近 `n` 个收盘价（**含今日**），内部用 `d.close.get(size=n)`。注意 `get(size=n)` 返回的是 **array**（不是 list，但索引语义同 list），**最旧在前、最新在后**，所以 `closes[0]` 是 N 天前、`closes[-1]` 是今天。不足 n 个返回 `None`。这里取 `lookback+1` 根，用 `closes[-1]/closes[0]-1` 得到过去 `lookback` 个交易日的区间收益率。
 - `sorted(..., reverse=True)[:topn]`：按动量降序取前 `topn` 只。
 - `self.equal_weight_order(target, cur)`：等权调仓（见 3.5）。
 

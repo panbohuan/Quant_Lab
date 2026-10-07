@@ -54,7 +54,7 @@ class FactorNeutralize(PanelStrategy):
         self.ind_map = industry_map(codes)
 ```
 
-`industry_map(codes)`（§17.2）返回 `{代码: 申万一级行业名}`。注意数据集限制：申万行业接口对部分行业返回异常结构，`industry_map` 实际**只能覆盖约一半申万一级行业**（本次回测日志显示 16/31 个可用，共 2710 只股票映射到了行业）。未映射到的股票在回归里统一归入"未知"类（见 3.3），这是本地版的已知近似。
+`industry_map(codes)`（§14.2）返回 `{代码: 申万一级行业名}`。注意数据集限制：申万行业接口对部分行业返回异常结构，`industry_map` 实际**只能覆盖约一半申万一级行业**（本次回测日志显示 16/31 个可用，共 2710 只股票映射到了行业）。未映射到的股票在回归里统一归入"未知"类（见 3.3），这是本地版的已知近似。
 
 ### 3.2 中性化函数 `neutralize`
 
@@ -97,7 +97,7 @@ def neutralize(factor, logmv=None, industry=None):
 mv = asof(self.mv, cur)
 if mv is None:
     return
-# ... 算动量 mom（list 语义，closes[-1]/closes[0]-1）...
+# ... 算动量 mom（序列语义，closes[-1]/closes[0]-1）...
 if len(mom) < self.p.topn + 5:
     return
 mv = mv[mv > 0]

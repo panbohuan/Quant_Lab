@@ -85,8 +85,8 @@ def _features(self, d):
 
 要点与索引语义：
 
-- `hist_close(d, 61)` 返回 list，需 61 根（含今日）才能算"60 日动量"，所以取 `lookback+1` 根。**list 语义**：`c20[-1]` 是最新收盘、`c20[0]` 是 21 天前，`c20[-1]/c20[0]-1` 即 20 日涨幅。
-- `d.volume.get(size=61)`：`get()` 返回**普通 list**（详见 `backtrader详解` §5.1），`vols[-5:]` 取最近 5 根，`vols` 整体取近 60 日均量，二者之比即量比。
+- `hist_close(d, 61)` 返回 list，需 61 根（含今日）才能算"60 日动量"，所以取 `lookback+1` 根。**序列语义**：`c20[-1]` 是最新收盘、`c20[0]` 是 21 天前，`c20[-1]/c20[0]-1` 即 20 日涨幅。
+- `d.volume.get(size=61)`：`get()` 返回 **array**（`array.array`，**不是 list**；但索引语义同 list）（详见 `backtrader详解` §2.2），`vols[-5:]` 取最近 5 根，`vols` 整体取近 60 日均量，二者之比即量比。
 - `min(c60) <= 0` 守卫排除停牌/异常价。`pct_change().dropna()` 算日收益率序列再取 std。
 - 所有特征只用**已收盘的 K 线**（hist_close 长度守卫在内部），不偷看未来。
 
@@ -107,7 +107,7 @@ def _label_pending(self):
     self.pending = still
 ```
 
-- `self.getdatabyname(code)`：按名字取回该标的的 Line 数据源（与 §7.3 一致）。
+- `self.getdatabyname(code)`：按名字取回该标的的 Line 数据源（与 §5.4 一致）。
 - `len(d)` 是该数据源已推进的 K 线总数；`bars0` 是登记样本时 `len(d)` 的值。`len(d) - bars0 >= 20` 表示"自登记起已过去至少 20 个交易日"——**标签此刻才确认**，绝不提前用未来收益。
 - `p1 = d.close[0]`：Line 语义，当根收盘价（今天），与 list 的 `[-1]` 不同，这里的 `[0]` 才是"最新"。`p1/p0-1 > 0` 即未来 20 日上涨 → 标签 1。
 

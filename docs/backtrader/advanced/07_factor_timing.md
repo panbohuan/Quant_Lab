@@ -49,9 +49,9 @@ def __init__(self):
     self.pe  = load_index_pe('沪深300')             # Series(index=日期)，月度 PE
 ```
 
-注意：`value_panel` / `roe_panel` / `load_index_pe` 返回的都是**普通 pandas 对象**，不是 backtrader 的 Line。它们在 `__init__` 里一次性加载，之后在 `on_rebalance` 里用 `asof()` 切片——因为财务数据是低频面板，没必要做成逐根递推的 Line（base doc 5.1：Line 用于行情/指标，面板数据用 pandas 更直接）。
+注意：`value_panel` / `roe_panel` / `load_index_pe` 返回的都是**普通 pandas 对象**，不是 backtrader 的 Line。它们在 `__init__` 里一次性加载，之后在 `on_rebalance` 里用 `asof()` 切片——因为财务数据是低频面板，没必要做成逐根递推的 Line（base doc §2.2：Line 用于行情/指标，面板数据用 pandas 更直接）。
 
-`roe_panel` 把报告期后移 `lag_days=45` 天：季报在报告期结束后约 1~1.5 个月才公告，回测中只能用公告后的 ROE，否则是未来函数（base doc 17.2 已说明）。
+`roe_panel` 把报告期后移 `lag_days=45` 天：季报在报告期结束后约 1~1.5 个月才公告，回测中只能用公告后的 ROE，否则是未来函数（base doc §14.2 已说明）。
 
 ### 3.2 `asof(panel, cur)` —— 防未来函数的面板切片（重点）
 
@@ -128,9 +128,9 @@ self.equal_weight_order(names, cur)
 | `d.close[-1]` | 上一根（昨天） | ✅ |
 | `d.close[-2]` | 上上根（前天） | ✅ |
 | `d.close[1]` | 下一根（明天） | ❌ 未来数据，禁用 |
-| `d.close.get(size=n)` 返回的 list | `list[0]`=最旧、`list[-1]`=最新 | ✅（list 语义，与 Line 相反） |
+| `d.close.get(size=n)` 返回的 array | `[0]`=最旧、`[-1]`=最新（数组） | ✅（序列语义，与 Line 相反） |
 
-本策略动量用 `closes[-1]/closes[0]-1`（`closes` 是 `hist_close` 返回的 list，`[-1]`=最新）；财务面板用 `asof` 截断。两个易错点：**(1)** `line[1]` 是未来，禁用；**(2)** 首根 K 线 `[-1]` 会绕到数据集末尾（base doc 5.1 危险信号 1），本策略靠 `hist_close` 的 `len(d)<n` 判空挡住。
+本策略动量用 `closes[-1]/closes[0]-1`（`closes` 是 `hist_close` 返回的 array，`[-1]`=最新）；财务面板用 `asof` 截断。两个易错点：**(1)** `line[1]` 是未来，禁用；**(2)** 首根 K 线 `[-1]` 会绕到数据集末尾（base doc §2.2 危险信号 1），本策略靠 `hist_close` 的 `len(d)<n` 判空挡住。
 
 ### 3.8 `asof` 为什么不能换成 `panel.iloc[-1]`
 
@@ -142,7 +142,7 @@ self.equal_weight_order(names, cur)
 
 ### 3.10 回测时序与因子择时的常见坑
 
-`on_rebalance(cur)` 在当根收盘后被调用，`self.buy/sell` 默认**下一根开盘**成交（base doc 5.6），天然防未来。因子择时的坑：(1) **判断错两边挨打**——误判高估会错过上涨、误判低估会踩跌，所以权重变化不宜极端（本策略最大 2.0 倍）；(2) **ROE 公告滞后**——必须用 `roe_panel(lag_days=45)` 后移，否则用到未公告的财报；(3) **幸存者偏差**——`load_index_members` 返回当前成分，回测用了历史并不存在的龙头（见第四节）。
+`on_rebalance(cur)` 在当根收盘后被调用，`self.buy/sell` 默认**下一根开盘**成交（base doc §9.1），天然防未来。因子择时的坑：(1) **判断错两边挨打**——误判高估会错过上涨、误判低估会踩跌，所以权重变化不宜极端（本策略最大 2.0 倍）；(2) **ROE 公告滞后**——必须用 `roe_panel(lag_days=45)` 后移，否则用到未公告的财报；(3) **幸存者偏差**——`load_index_members` 返回当前成分，回测用了历史并不存在的龙头（见第四节）。
 
 ## 四、与聚宽版的差异
 

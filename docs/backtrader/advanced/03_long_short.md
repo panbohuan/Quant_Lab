@@ -148,14 +148,14 @@ if self.broker.getvalue() < CASH * STOP_EQUITY_RATIO:
 
 ### 3.5 `PanelStrategy` 与 `live()` 停牌过滤
 
-和 a02 一样继承 `PanelStrategy`，用 `self.live(d, cur)` 过滤停牌/未上市个股；股票池用 `load_universe` 剔除上市太晚的标的（候选 40 → 数据可用 35，日志可见）。动量计算同样用 `hist_close(d, lookback+1)` 的 list 语义，无未来函数。
+和 a02 一样继承 `PanelStrategy`，用 `self.live(d, cur)` 过滤停牌/未上市个股；股票池用 `load_universe` 剔除上市太晚的标的（候选 40 → 数据可用 35，日志可见）。动量计算同样用 `hist_close(d, lookback+1)` 的 序列语义，无未来函数。
 
 ### 3.6 索引方向复核
 
 | 写法 | 含义 | 本策略用法 |
 |------|------|-----------|
 | `d.close[0]` | 当根收盘价 | 算现价、`_target_size` |
-| `closes[-1]`（list） | 最新一根收盘 | 动量分子（list 语义！） |
+| `closes[-1]`（list） | 最新一根收盘 | 动量分子（序列语义！） |
 | `closes[0]`（list） | 最旧一根收盘 | 动量分母 |
 
 全程未出现 Line 正索引 `[1]`，无未来函数。

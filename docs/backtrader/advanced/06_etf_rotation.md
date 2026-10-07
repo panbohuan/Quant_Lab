@@ -61,13 +61,13 @@ data[f'{DEFENSIVE_NAME}({DEFENSIVE})'] = load_daily(DEFENSIVE, ...)   # 国债ET
 data['__CAL__'] = load_daily(BENCHMARK, ...)    # 基准当日历源（每交易日都有行情）
 ```
 
-`__CAL__` 是 backtrader 本地版多标的的「时钟源」：`PanelStrategy` 用它判断「今天是不是交易日」，避免某只 ETF 停牌时 `next()` 拿不到当前日期（详见 base doc 第 14 节）。`self.tradables` 自动排除 `__CAL__`。
+`__CAL__` 是 backtrader 本地版多标的的「时钟源」：`PanelStrategy` 用它判断「今天是不是交易日」，避免某只 ETF 停牌时 `next()` 拿不到当前日期（详见 base doc §4.3）。`self.tradables` 自动排除 `__CAL__`。
 
 ### 3.2 `PanelStrategy.on_rebalance(cur)` 与调仓触发
 
 `PanelStrategy`（`btlab/runner.py`）把「每月第 1 个交易日」的调度写进了基类：它在 `next()` 里读 `self.cal.datetime.date(0)` 得到当前日期，按 `(年, 月)` 去重，月份一变就调一次 `on_rebalance(cur)`。`cur` 是 `datetime.date` 对象，作为「今天」传给策略。
 
-子类只需实现 `on_rebalance(cur)`，不用自己写定时器——这是 backtrader 与聚宽 `run_monthly` 的对应物（对照表见 base doc 第 16 节）。把调仓逻辑放在 `on_rebalance` 里而非 `next`，能强制「收盘出信号、次日开盘成交」的默认时序（base doc 5.6 节）。
+子类只需实现 `on_rebalance(cur)`，不用自己写定时器——这是 backtrader 与聚宽 `run_monthly` 的对应物（对照表见 base doc §13）。把调仓逻辑放在 `on_rebalance` 里而非 `next`，能强制「收盘出信号、次日开盘成交」的默认时序（base doc §9.1）。
 
 ### 3.3 动量计算与 Line/get 的索引语义（重点）
 
@@ -76,15 +76,15 @@ closes = self.hist_close(d, self.p.lookback + 1)
 scores[d._name] = closes[-1] / closes[0] - 1.0
 ```
 
-`hist_close(d, n)` 内部调 `d.close.get(size=n)`，返回的是**普通 Python list**（最旧在前、最新在后），不是 backtrader 的 Line 对象。因此这里的 `closes[0]` 是窗口最旧一根、`closes[-1]` 是当根（最新）——与 base doc 5.1 强调的「Line 语义」不同：
+`hist_close(d, n)` 内部调 `d.close.get(size=n)`，返回的是 **`array.array`**（不是 Python list；最旧在前、最新在后），不是 backtrader 的 Line 对象。因此这里的 `closes[0]` 是窗口最旧一根、`closes[-1]` 是当根（最新）——与 base doc §2.2 强调的「Line 语义」不同：
 
 | 写法 | 含义 |
 |------|------|
 | `d.close[0]` | Line 索引：当根收盘价（backtrader 专用） |
 | `d.close[-1]` | Line 索引：上一根（昨天） |
-| `d.close.get(size=n)` 返回的 list | Python list，`list[0]`=最旧，`list[-1]`=最新 |
+| `d.close.get(size=n)` 返回的 array | `[0]`=最旧、`[-1]`=最新（数组，索引语义同 list） |
 
-`hist_close` 在 `len(d) < n` 时返回 `None`，天然挡住了「首根 K 线负索引绕圈」的未来函数陷阱（base doc 5.1 危险信号 1）。
+`hist_close` 在 `len(d) < n` 时返回 `None`，天然挡住了「首根 K 线负索引绕圈」的未来函数陷阱（base doc §2.2 危险信号 1）。
 
 ### 3.4 风险开关与防御资产切换
 
@@ -125,9 +125,9 @@ self.equal_weight_order(target, cur)
 | `d.close[-1]` | 上一根（昨天） | ✅ |
 | `d.close[-2]` | 上上根（前天） | ✅ |
 | `d.close[1]` | 下一根（明天） | ❌ 未来数据，禁用 |
-| `d.close.get(size=n)` 返回的 list | `list[0]`=最旧、`list[-1]`=最新 | ✅（list 语义，与 Line 相反） |
+| `d.close.get(size=n)` 返回的 array | `[0]`=最旧、`[-1]`=最新（数组） | ✅（序列语义，与 Line 相反） |
 
-两个易错点：**(1)** `line[1]` 是未来，永远不能用；**(2)** 首根 K 线上的 `[-1]` 会静默绕到数据集最后一行（base doc 5.1 危险信号 1），本策略靠 `hist_close` 的 `len(d) < n` 判空挡住。注意 `get()` 返回的是 Python list，`list[-1]` 是「最新」——这与 Line 的 `[-1]=昨天` 正好相反，务必分清。
+两个易错点：**(1)** `line[1]` 是未来，永远不能用；**(2)** 首根 K 线上的 `[-1]` 会静默绕到数据集最后一行（base doc §2.2 危险信号 1），本策略靠 `hist_close` 的 `len(d) < n` 判空挡住。注意 `get()` 返回的是 `array.array`（不是 list），`[-1]` 是「最新」——这与 Line 的 `[-1]=昨天` 正好相反，务必分清。
 
 ### 3.8 `getdatabyname` 与多标的持仓查询
 
@@ -135,7 +135,7 @@ self.equal_weight_order(target, cur)
 
 ### 3.9 回测时序：收盘出信号 → 次日开盘成交
 
-`on_rebalance(cur)` 在当根 K 线收完后被调用（`cur = self.cal.datetime.date(0)`），`self.buy/sell` 默认在**下一根开盘**成交（base doc 5.6）。这是 backtrader 天然的防未来函数保护：你今天收盘看到信号、明天开盘才真成交，不可能用到明天的价格。本仓库 20 个策略一律如此，文件头已注明「当根收盘出信号 → 次日开盘成交」。
+`on_rebalance(cur)` 在当根 K 线收完后被调用（`cur = self.cal.datetime.date(0)`），`self.buy/sell` 默认在**下一根开盘**成交（base doc §9.1）。这是 backtrader 天然的防未来函数保护：你今天收盘看到信号、明天开盘才真成交，不可能用到明天的价格。本仓库 20 个策略一律如此，文件头已注明「当根收盘出信号 → 次日开盘成交」。
 
 ### 3.10 一个完整例子：某月动量排序
 
@@ -150,7 +150,7 @@ self.equal_weight_order(target, cur)
 
 ### 3.12 费用与滑点如何在 backtrader 落地
 
-`run_strategy` 内部调 `build_cerebro`，已装配 `AStockCommission`（base doc 13.2）：佣金双边 0.03%、印花税仅卖出 0.05%、单笔最低 5 元。`_getcommission(size, price, pseudoexec)` 里用 `size < 0` 判卖出方向才加印花税。滑点用 `set_slippage_perc(0.0002)`（单边 0.02%）：买入成交价 = 价 ×(1+0.02%)、卖出 = 价 ×(1-0.02%)。这些费用真实计入净值——高换手策略若忽略，收益会被虚高好几点，所以本仓库 20 个策略统一用这套 A 股口径。
+`run_strategy` 内部调 `build_cerebro`，已装配 `AStockCommission`（base doc §9.4）：佣金双边 0.03%、印花税仅卖出 0.05%、单笔最低 5 元。`_getcommission(size, price, pseudoexec)` 里用 `size < 0` 判卖出方向才加印花税。滑点用 `set_slippage_perc(0.0002)`（单边 0.02%）：买入成交价 = 价 ×(1+0.02%)、卖出 = 价 ×(1-0.02%)。这些费用真实计入净值——高换手策略若忽略，收益会被虚高好几点，所以本仓库 20 个策略统一用这套 A 股口径。
 
 ## 四、与聚宽版的差异
 

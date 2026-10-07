@@ -8,7 +8,7 @@
 
 | 文档 | 库 | 定位 | 一句话说明 |
 |------|-----|------|-----------|
-| [backtrader详解.md](backtrader详解.md) | backtrader | **本地回测引擎** | 本地回测的语法底座：Cerebro / Strategy / 指标 / 分析器 / 费用滑点全覆盖 |
+| [backtrader详解.md](backtrader详解.md) | backtrader | **本地回测引擎** | 本地回测的**教程 + 手册**：18 章，从心智模型、逐行模板到 Cerebro / Strategy / 指标 / 分析器 / 费用滑点 / 聚宽对照，代码块全部通过语法检查、关键示例实跑验证 |
 | [sklearn详解.md](sklearn详解.md) | scikit-learn | 机器学习的"瑞士军刀" | 分类/回归/聚类/降维/预处理一站式，API 统一 |
 | [xgboost详解.md](xgboost详解.md) | XGBoost | 梯度提升的工业级实现 | 因子筛选与合成，量化高频使用 |
 | [tensorflow_keras详解.md](tensorflow_keras详解.md) | TensorFlow / Keras | 深度学习框架 | 神经网络、LSTM、CNN、Transformer |

@@ -55,7 +55,7 @@ class TwoFactorRank(PanelStrategy):
     params = (('topn', TOPN), ('lookback', LOOKBACK), ('rebalance', 'monthly'),)
 ```
 
-`params` 是 backtrader 的标准写法（见 `backtrader详解` §7.1），元组里每个 `(名字, 默认值)` 会被收集成 `self.p.xxx`。`rebalance='monthly'` 告诉骨架"每月第 1 个交易日触发一次 `on_rebalance`"（`daily`/`weekly`/`monthly` 三选一）。
+`params` 是 backtrader 的标准写法（见 `backtrader详解` §5.2），元组里每个 `(名字, 默认值)` 会被收集成 `self.p.xxx`。`rebalance='monthly'` 告诉骨架"每月第 1 个交易日触发一次 `on_rebalance`"（`daily`/`weekly`/`monthly` 三选一）。
 
 ### 3.2 `__init__` 里预加载面板
 
@@ -66,7 +66,7 @@ def __init__(self):
     self.mv = value_panel(codes, 'total_mv')
 ```
 
-`self.tradables` 是 `PanelStrategy` 过滤掉 `__CAL__` 后的"真正可交易标的"列表，每个 `d` 的 `._name` 是回测引擎里注册的名字（即 `load_universe` 传入的归一化代码）。`value_panel(codes, 'total_mv')`（`btlab/runner.py` §17.2）把多只股票的"总市值"拼成一张面板 DataFrame（index=日期, columns=代码）。**面板在 `__init__` 里一次性预加载**，调仓时只切片取当天那一行，避免每次都联网。
+`self.tradables` 是 `PanelStrategy` 过滤掉 `__CAL__` 后的"真正可交易标的"列表，每个 `d` 的 `._name` 是回测引擎里注册的名字（即 `load_universe` 传入的归一化代码）。`value_panel(codes, 'total_mv')`（`btlab/runner.py` §14.2）把多只股票的"总市值"拼成一张面板 DataFrame（index=日期, columns=代码）。**面板在 `__init__` 里一次性预加载**，调仓时只切片取当天那一行，避免每次都联网。
 
 ### 3.3 `on_rebalance`：调仓主逻辑
 
@@ -80,7 +80,7 @@ if mv is None:
     return
 ```
 
-`asof(panel, cur)`（§17.2）的核心代码是 `panel.loc[:pd.Timestamp(cur)].iloc[-1]`：只取"不晚于 cur"的最近一行。哪怕数据里恰好有 cur 之后才公告的市值，也被这一刀切掉——这是本地回测防未来函数的第一道闸门。
+`asof(panel, cur)`（§14.2）的核心代码是 `panel.loc[:pd.Timestamp(cur)].iloc[-1]`：只取"不晚于 cur"的最近一行。哪怕数据里恰好有 cur 之后才公告的市值，也被这一刀切掉——这是本地回测防未来函数的第一道闸门。
 
 **(2) 动量因子——`hist_close` 取最近 n 根收盘价**
 
@@ -94,9 +94,9 @@ for d in self.tradables:
     mom[d._name] = closes[-1] / closes[0] - 1.0
 ```
 
-`self.live(d, cur)` 判断"这只票今天有没有行情"（停牌/未上市时它的时间会停在旧日期）。`self.hist_close(d, n)` 返回 `d.close.get(size=n)`——一个**普通 Python list**，`None` 表示数据不足 n 根。这里必须分清两种索引语义：
+`self.live(d, cur)` 判断"这只票今天有没有行情"（停牌/未上市时它的时间会停在旧日期）。`self.hist_close(d, n)` 返回 `d.close.get(size=n)`——一个 **`array.array`**（不是 Python list），`None` 表示数据不足 n 根。这里必须分清两种索引语义：
 
-- **Line 对象** `d.close[0]` = 当根、`d.close[-1]` = 昨天（详见 `backtrader详解` §5.1，**绝不能用 `d.close[1]`，那是明天**）；
+- **Line 对象** `d.close[0]` = 当根、`d.close[-1]` = 昨天（详见 `backtrader详解` §2.2，**绝不能用 `d.close[1]`，那是明天**）；
 - **list** `closes[-1]` = 列表最后一个 = **最新**（今天），`closes[0]` = 最旧（60 天前）。这是 list 的常规语义，与 Line 的负索引恰好相反，切勿混淆。
 
 动量 = `closes[-1]/closes[0] - 1` 即"60 个交易日累计涨幅"。`hist_close` 内部有 `if len(d) < n: return None` 的守卫，所以**拿到的全是已经走完的 K 线**，天然不会偷看未来。
@@ -124,7 +124,7 @@ self.equal_weight_order(names, cur)
 
 ### 3.4 `equal_weight_order`：先卖后买 + 整手取整
 
-`PanelStrategy.equal_weight_order`（§17.2）把名单内标的都调到"等权市值"：
+`PanelStrategy.equal_weight_order`（§14.2）把名单内标的都调到"等权市值"：
 
 ```python
 per = self.broker.getvalue() * cap / len(live_names)   # cap=0.98 留 2% 现金缓冲
@@ -145,9 +145,9 @@ for name in live_names:
 
 - `self.broker.getvalue()` 是当前总资产（现金+持仓市值），乘 `cap=0.98` 是**留 2% 现金缓冲**，防止手续费/价格波动导致买入时现金不足被拒（`Margin`）。
 - **先卖后买**的顺序很关键：先把不在名单里的持仓清掉，腾出现金，再买入新标的，避免"想买却没钱"。
-- `round_lot(per/price)` 把股数**向下取整到 100 的整数倍**（A 股 1 手 = 100 股，详见 `backtrader详解` §7.4 坑 5）。backtrader 本身不懂整手，必须自己取整。
+- `round_lot(per/price)` 把股数**向下取整到 100 的整数倍**（A 股 1 手 = 100 股，详见 `backtrader详解` §9.1）。backtrader 本身不懂整手，必须自己取整。
 - `self.getposition(d).size` 是当前持仓股数；`delta` 是"目标股数 − 当前股数"的**差额**，正数补买、负数卖出，天然实现再平衡。
-- 成交时点遵循 backtrader 默认规则（`§5.6`）：`next()` 在当根收盘后调用 → 订单在**下一根开盘价**成交，自动免疫未来函数。
+- 成交时点遵循 backtrader 默认规则（`§9.1`）：`next()` 在当根收盘后调用 → 订单在**下一根开盘价**成交，自动免疫未来函数。
 
 ### 3.5 `PanelStrategy` 的月份调度与 `__CAL__` 时钟
 
@@ -167,7 +167,7 @@ def prenext(self):
     self.next()                                # 数据不足期也尽量推进，尽早开始
 ```
 
-`self.cal` 是喂进来的 `__CAL__` 基准指数（每个交易日都有行情），专门当"时钟"——否则某只股票停牌时你无法判断今天是几号（`backtrader详解` §14）。`(cur.year, cur.month)` 作 key，跨月才触发一次 `on_rebalance`，天然实现"每月首个交易日调仓"。`prenext` 转调 `next` 让策略在上市初期数据不足时也尽早进入调度。注意：`next()` 在当根**收盘后**被调用，订单默认**次日开盘**成交（§5.6），信号不踩未来。
+`self.cal` 是喂进来的 `__CAL__` 基准指数（每个交易日都有行情），专门当"时钟"——否则某只股票停牌时你无法判断今天是几号（`backtrader详解` §4.3）。`(cur.year, cur.month)` 作 key，跨月才触发一次 `on_rebalance`，天然实现"每月首个交易日调仓"。`prenext` 转调 `next` 让策略在上市初期数据不足时也尽早进入调度。注意：`next()` 在当根**收盘后**被调用，订单默认**次日开盘**成交（§9.1），信号不踩未来。
 
 ## 四、与聚宽版的差异
 

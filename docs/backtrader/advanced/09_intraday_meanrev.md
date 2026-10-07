@@ -57,7 +57,7 @@ if closes is None or closes[0] <= 0:
 scores[d._name] = closes[-1] / closes[0] - 1.0    # 5 日累计涨跌幅
 ```
 
-`hist_close` 内部 `d.close.get(size=6)` 返回**普通 Python list**（最旧在前、最新在后）。所以 `closes[0]` = 6 根前（5 日前）收盘价、`closes[-1]` = 当根（最新）收盘价，`closes[-1]/closes[0]-1` 即「过去 5 个交易日累计涨跌幅」。这与 base doc 5.1 强调的 Line 索引不同：`d.close[0]` 才是 Line 的当根、`d.close[-1]` 是昨天；而 `.get()` 返回的 list 里 `[-1]` 是最新——**千万别把两种语义混用**。
+`hist_close` 内部 `d.close.get(size=6)` 返回 **`array.array`**（不是 Python list；最旧在前、最新在后）。所以 `closes[0]` = 6 根前（5 日前）收盘价、`closes[-1]` = 当根（最新）收盘价，`closes[-1]/closes[0]-1` 即「过去 5 个交易日累计涨跌幅」。这与 base doc §2.2 强调的 Line 索引不同：`d.close[0]` 才是 Line 的当根、`d.close[-1]` 是昨天；而 `.get()` 返回的 list 里 `[-1]` 是最新——**千万别把两种语义混用**。
 
 `hist_close` 在 `len(d) < 6` 时返回 `None`，挡住首根 K 线负索引绕圈的未来函数陷阱。
 
@@ -103,9 +103,9 @@ self.equal_weight_order(names, cur)
 | `d.close[-1]` | 上一根（昨天） | ✅ |
 | `d.close[-2]` | 上上根（前天） | ✅ |
 | `d.close[1]` | 下一根（明天） | ❌ 未来数据，禁用 |
-| `d.close.get(size=n)` 返回的 list | `list[0]`=最旧、`list[-1]`=最新 | ✅（list 语义，与 Line 相反） |
+| `d.close.get(size=n)` 返回的 array | `[0]`=最旧、`[-1]`=最新（数组） | ✅（序列语义，与 Line 相反） |
 
-本策略 `closes[-1]/closes[0]-1` 里 `closes` 是 `hist_close` 返回的 list，`[-1]`=最新、`[0]`=5 日前。两个易错点：**(1)** `line[1]` 是未来，禁用；**(2)** 首根 K 线 `[-1]` 会绕到数据集末尾（base doc 5.1），靠 `hist_close` 的 `len(d)<n` 判空挡住。
+本策略 `closes[-1]/closes[0]-1` 里 `closes` 是 `hist_close` 返回的 array，`[-1]`=最新、`[0]`=5 日前。两个易错点：**(1)** `line[1]` 是未来，禁用；**(2)** 首根 K 线 `[-1]` 会绕到数据集末尾（base doc §2.2），靠 `hist_close` 的 `len(d)<n` 判空挡住。
 
 ### 3.7 降级后时序与持仓周期的变化（诚实复盘）
 
@@ -132,7 +132,7 @@ def close_all(self, cur=None):
 
 ### 3.9 回测时序
 
-`on_rebalance(cur)` 在当根收盘后调用（周频，约每 5 个交易日一次），`self.buy/sell` 默认**下一根开盘**成交（base doc 5.6），天然防未来。`cur` 取自 `self.cal.datetime.date(0)`，用 `__CAL__` 基准当日历源，避免某 ETF 停牌时拿不到当前日期（base doc 14 节）。
+`on_rebalance(cur)` 在当根收盘后调用（周频，约每 5 个交易日一次），`self.buy/sell` 默认**下一根开盘**成交（base doc §9.1），天然防未来。`cur` 取自 `self.cal.datetime.date(0)`，用 `__CAL__` 基准当日历源，避免某 ETF 停牌时拿不到当前日期（base doc §4.3）。
 
 ### 3.10 均值回归策略常见坑
 

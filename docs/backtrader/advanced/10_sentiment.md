@@ -58,7 +58,7 @@ vol_ratio = float(np.mean(vols[-SHORT_WIN:]) / (np.mean(vols) + 1e-9))
 | `hist_close` / `.get()` 返回 | `closes[-1]` | **list 最新一根**（当根） |
 | backtrader Line | `d.close[0]` | Line 当根；`d.close[-1]` 是昨天 |
 
-`closes` 是 `hist_close` 返回的 Python list，`closes[-1]` = 当根收盘、`closes[-(SHORT_WIN+1):-1]` = 切片取「倒数第 6 到倒数第 2」共 5 个值，即最近 5 天各自的昨收（与 `opens`/`highs`/`lows` 的 5 天一一对应）。
+`closes` 是 `hist_close` 返回的 `array.array`（不是 Python list），`closes[-1]` = 当根收盘、`closes[-(SHORT_WIN+1):-1]` = 切片取「倒数第 6 到倒数第 2」共 5 个值，即最近 5 天各自的昨收（与 `opens`/`highs`/`lows` 的 5 天一一对应）。
 
 - **`amp`（振幅）**：用 `(high-low)/close[-1]` 算每日振幅，分母统一用当根收盘 `closes[-1]`，再对 5 天取均值。振幅大 = 当天多空拉锯激烈 = 情绪亢奋。
 - **`gap`（跳空）**：`open / 昨收 - 1` 的绝对值，捕捉「隔夜出了消息导致开盘跳空」。5 天均值越大 = 隔夜信息冲击越频繁。
@@ -80,7 +80,7 @@ self.equal_weight_order(names, cur)
 
 ### 3.3 防未来函数检查
 
-`_sentiment` 用的 `closes`/`highs`/`lows`/`opens`/`vols` 全部来自 `hist_close` 和 `.get(size=...)`，这些都是「截至当根及之前」的已知数据，`closes[-1]` 是当根（非未来）。`prev_close` 用 `closes[-6:-1]` 也是历史值。没有用到 `line[1]`（未来），符合 base doc 5.1 的索引纪律。
+`_sentiment` 用的 `closes`/`highs`/`lows`/`opens`/`vols` 全部来自 `hist_close` 和 `.get(size=...)`，这些都是「截至当根及之前」的已知数据，`closes[-1]` 是当根（非未来）。`prev_close` 用 `closes[-6:-1]` 也是历史值。没有用到 `line[1]`（未来），符合 base doc §2.2 的索引纪律。
 
 ### 3.4 关键参数表
 
@@ -100,9 +100,9 @@ self.equal_weight_order(names, cur)
 | `d.close[-1]` | 上一根（昨天） | ✅ |
 | `d.close[-2]` | 上上根（前天） | ✅ |
 | `d.close[1]` | 下一根（明天） | ❌ 未来数据，禁用 |
-| `d.close.get(size=n)` 返回的 list | `list[0]`=最旧、`list[-1]`=最新 | ✅（list 语义，与 Line 相反） |
+| `d.close.get(size=n)` 返回的 array | `[0]`=最旧、`[-1]`=最新（数组） | ✅（序列语义，与 Line 相反） |
 
-本策略 `closes`/`highs`/`lows`/`opens`/`vols` 全部来自 `hist_close` 和 `.get(size=...)` 返回的 list，`closes[-1]`=当根、`closes[-6:-1]`=最近 5 天昨收（与 5 天 open 一一对应）。`prev_close` 用历史切片、不含未来。两个易错点：**(1)** `line[1]` 是未来，禁用；**(2)** 首根 K 线 `[-1]` 会绕到数据集末尾（base doc 5.1），靠 `hist_close` 的 `len(d)<n` 判空挡住。
+本策略 `closes`/`highs`/`lows`/`opens`/`vols` 全部来自 `hist_close` 和 `.get(size=...)` 返回的 array，`closes[-1]`=当根、`closes[-6:-1]`=最近 5 天昨收（与 5 天 open 一一对应）。`prev_close` 用历史切片、不含未来。两个易错点：**(1)** `line[1]` 是未来，禁用；**(2)** 首根 K 线 `[-1]` 会绕到数据集末尾（base doc §2.2），靠 `hist_close` 的 `len(d)<n` 判空挡住。
 
 ### 3.6 代理变量思维：当原始数据拿不到时怎么办
 
@@ -118,7 +118,7 @@ self.equal_weight_order(names, cur)
 
 ### 3.8 回测时序与情绪因子常见坑
 
-`on_rebalance(cur)` 在当根收盘后调用（月度），`self.buy/sell` 默认**下一根开盘**成交（base doc 5.6），天然防未来。情绪因子坑：(1) **方向模糊**——高情绪可能继续涨（追涨），也可能已过热（反转），所以必须与动量结合而非单独用；(2) **代理噪声**——量价代理对情绪的近似能力有限，回测夏普仅 0.46（见第五节）；(3) **幸存者偏差**——`load_index_members` 返回当前成分，回测用了历史并不存在的龙头。
+`on_rebalance(cur)` 在当根收盘后调用（月度），`self.buy/sell` 默认**下一根开盘**成交（base doc §9.1），天然防未来。情绪因子坑：(1) **方向模糊**——高情绪可能继续涨（追涨），也可能已过热（反转），所以必须与动量结合而非单独用；(2) **代理噪声**——量价代理对情绪的近似能力有限，回测夏普仅 0.46（见第五节）；(3) **幸存者偏差**——`load_index_members` 返回当前成分，回测用了历史并不存在的龙头。
 
 ### 3.9 与 a08（ML 因子）的对比定位
 
