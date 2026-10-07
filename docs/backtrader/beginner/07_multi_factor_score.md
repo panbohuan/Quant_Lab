@@ -1,204 +1,258 @@
-# 策略 7：多因子打分模型（Multi-Factor Score）· backtrader 本地版
+# 策略 7：多因子打分模型（估值 + 质量 + 动量 + 规模）· backtrader 本地版
 
-> 策略类型：多因子选股（z-score 标准化 + 线性加权） ｜ 难度：★★★★☆ ｜ 前置知识：策略 6 的排名法、z-score、pandas 对齐
-> **运行框架：backtrader（本地回测 + 免费数据）** ｜ 本策略的**聚宽云端版**见 [docs/joinquant/beginner/s07_multi_factor_score.md](../../joinquant/beginner/07_multi_factor_score.md)
+> **策略类型**：多因子选股（z-score 标准化） ｜ **难度**：★★★★☆ ｜ **前置知识**：知道"标准差""标准化"
+> **运行**：`python strategies/backtrader/beginner/bt_s07_multi_factor_score.py` ｜ **聚宽版**：[07_multi_factor_score.md](../../joinquant/beginner/07_multi_factor_score.md)
+> **语法底座**：[backtrader详解.md](../../learning/2.库详解/backtrader详解.md) 第 10 章
 
-## 一、核心思路
+---
 
-把经典因子归纳为四大类（Barra 等模型的底层逻辑），各取一个代表合成综合分，选"又好又便宜、趋势向上且盘子不大"的股票：
+## 一、这一篇你将学到什么
 
-| 大类 | 代表因子 | 方向 | 含义 |
-|------|----------|------|------|
-| 质量 Quality | ROE | 越高越好 | 赚钱能力强 |
-| 估值 Value | PB | 越低越好 | 便宜 |
-| 动量 Momentum | 60 日涨幅 | 越高越好 | 趋势强 |
-| 规模 Size | 总市值 | 越小越好 | 小盘溢价 |
+策略 6 用"名次"把两个因子合起来。这一篇换成**z-score（标准化）**，并且一次用四个因子。
 
-**为什么从策略 6 的"排名法"升级到"打分法"**：排名法只保留"先后"信息，丢掉"领先多少"。z-score 标准化把每个因子变成"均值 0、标准差 1"的标准分布，既统一量纲、又保留幅度：
+| 你会搞懂 | 一句话 |
+|---|---|
+| z-score 是什么 | "这个值比平均高/低多少个标准差" |
+| 名次法 vs z-score | 前者抗极端值，后者保留距离信息 |
+| 因子方向用**正负号**表达 | 好因子加号、坏因子减号 |
+| 多因子对齐 | 四个因子都要取交集，缺一个就不能入选 |
 
-$$z = \frac{x - \mu}{\sigma}$$
+**读完你应该能回答**：`score = z(roe) - z(pb) + z(mom) - z(mv)` 里，为什么 pb 和 mv 是减号？
 
-转换后 `z = 1.5` 表示"比平均高 1.5 个标准差"，因子间可直接相加。
+---
 
-综合分按方向加权：
-
-$$score = z(ROE) - z(PB) + z(动量) - z(市值)$$
-
-负号即"越小越好"。选 `score` 最高的 TOPN 只等权持有。
-
-> 给新手的直觉：四个裁判给每个选手打分（都按"标准差"换算成统一尺度），质量裁判的加分、估值裁判的减分……最后总分最高的人入选。z-score 让"ROE 15%"和"市值 200 亿"这种风马牛不相及的数字能放在同一个算式里。
-
-## 二、算法结构（分步拆解）
+## 二、心智模型：四个因子，一个分数
 
 ```
-每月首个交易日触发 on_rebalance(cur)
+每月调仓（收盘后）
    │
-   ├─ 1. 取三个基本面面板快照（严格 ≤ cur）
-   │      ├─ asof(self.pb, cur)   → PB（市净率）
-   │      ├─ asof(self.mv, cur)   → 总市值
-   │      └─ asof(self.roe, cur)  → ROE（lag_days=45 模拟公告滞后）
+   ├─ 取四个因子（全部用 asof 切到"今天已知"）：
+   │     roe  净资产收益率   → 越高越好  （+）
+   │     pb   市净率         → 越低越好  （−）
+   │     mom  60 日动量      → 越高越好  （+）
+   │     mv   总市值         → 越小越好  （−）
    │
-   ├─ 2. 算动量因子（量价类，来自行情）
-   │      └─ self.hist_close(d, lookback+1) → closes[-1]/closes[0]-1
+   ├─ 每个因子做横截面 z-score：
+   │     z = (值 − 本期所有股票的平均值) ÷ 标准差
+   │     → 变成"比平均好/差多少个标准差"，无量纲
    │
-   ├─ 3. 四因子对齐到共同股票集合（多次 intersection + 剔除 PB/市值≤0）
+   ├─ score = z(roe) − z(pb) + z(mom) − z(mv)
    │
-   ├─ 4. z-score 标准化 + 按方向加权合成 score
-   │
-   └─ 5. equal_weight_order(score 最高的前 TOPN 只, cur)
+   └─ 取 score 最大的 10 只 → 等权买入 → 次日开盘成交
 ```
 
-## 三、代码逐段详解 + backtrader 语法解析
+**为什么要标准化？** 因为 ROE 的单位是"%"（常见 10~30），PB 是"倍"（常见 0.5~10），动量是小数（−0.3~0.5）。**直接相加，数值大的因子会独占话语权。** z-score 把四者都变成"标准差倍数"，才可加。
 
-### 3.1 预加载三张面板
+---
+
+## 三、核心思路
+
+**四因子 = 四类经典风格**，这是教科书级的组合：
+
+| 因子 | 代表 | 方向 | 为什么有效（简化） |
+|---|---|---|---|
+| **质量**（ROE） | "好公司" | + | 赚钱效率高、有护城河 |
+| **估值**（PB） | "便宜" | − | 价值溢价、均值回归 |
+| **动量**（60 日涨幅） | "强势" | + | 趋势延续 |
+| **规模**（总市值） | "小盘" | − | 小市值溢价 |
+
+**z-score 公式**：
+
+$$z_i = \frac{x_i - \bar{x}}{\sigma_x}$$
+
+- $z_i = +2$ → 这个值比平均高 2 个标准差（很突出）
+- $z_i = -1$ → 比平均低 1 个标准差
+
+代码里的实现带了一个**除零保护**：
 
 ```python
+def zscore(s):
+    s = pd.Series(s, dtype=float)
+    return (s - s.mean()) / (s.std() + 1e-12)     # +1e-12 防止标准差为 0
+```
+
+> **为什么要 `+1e-12`**：如果本期所有股票的某个因子值完全相同（标准差 = 0），除法会得到 inf 或 nan，把整个 score 污染。加一个极小的数就能避免——**这是量化代码里非常常见的一个小技巧**。
+
+> **名次 vs z-score 的取舍**：
+> - 名次法（策略 6）：把 1000 亿和 1200 亿看成"第 2 名和第 3 名"，差距被抹平 → 抗异常值；
+> - z-score（本篇）：保留"差多少"，但对**极端值敏感**（一只股票的 PB 异常小，z 可能是 −8）。
+> 实务里常先做**去极值（winsorize）**再标准化，本篇从简。
+
+---
+
+## 四、算法结构
+
+```
+main() → load_index_members → load_universe → __CAL__ → run_strategy
+   │
+   └─ MultiFactorScore.__init__()
+         ├─ self.pb  = value_panel(codes, 'pb')
+         ├─ self.mv  = value_panel(codes, 'total_mv')
+         └─ self.roe = roe_panel(codes, lag_days=ROE_LAG)     ← 财报要滞后 45 天
+   │
+   └─ 每月 on_rebalance(cur)
+         ├─ pb, mv, roe = asof(...)              ← 三张面板各自切到"已知"
+         ├─ mom = {代码: 60 日涨幅}               ← 量价因子逐只算
+         ├─ common = 四个集合的交集
+         ├─ 过滤 pb > 0、mv > 0，再取一次交集
+         ├─ score = z(roe) − z(pb) + z(mom) − z(mv)
+         └─ 降序取前 10 → equal_weight_order()
+```
+
+---
+
+## 五、代码逐段详解
+
+### 5.1 三个面板 + 一个量价因子
+
+```python
+ROE_LAG = 45
+
 class MultiFactorScore(PanelStrategy):
     params = (('topn', TOPN), ('lookback', LOOKBACK), ('rebalance', 'monthly'),)
 
     def __init__(self):
         super().__init__()
         codes = [d._name for d in self.tradables]
-        self.pb = value_panel(codes, 'pb')
-        self.mv = value_panel(codes, 'total_mv')
-        self.roe = roe_panel(codes, lag_days=ROE_LAG)
+        self.pb  = value_panel(codes, 'pb')                  # 估值
+        self.mv  = value_panel(codes, 'total_mv')            # 规模
+        self.roe = roe_panel(codes, lag_days=ROE_LAG)        # 质量（滞后 45 天）
 ```
 
-四个因子来自两套数据源：
+**三个面板 = 三种数据源**：估值/市值来自东财（2018+），财务来自新浪（季度）。它们的时间戳含义不同，所以**每个都要单独 `asof`**。
 
-- **行情类（动量）**：每根 K 线实时算，来自 backtrader 数据源 `self.hist_close`。
-- **基本面类（PB / 市值 / ROE）**：用 `value_panel` / `roe_panel` 在 `__init__` 一次性预拼成面板，调仓时切片。
-
-关键差异在于 **`roe_panel(codes, lag_days=45)`**：季报在报告期结束后约 1~1.5 个月才公告，本地免费源只有"报告期"没有"公告日"。`roe_panel`（§14.2）把 ROE 序列的索引整体后移 45 天（`s.index = s.index + pd.Timedelta(days=lag_days)`），模拟"公告之后才能用"的约束——**这是本地版防未来函数的关键一步**，否则会提前用上还没发布的财报。
-
-### 3.2 z-score 工具函数
+### 5.2 取数与对齐
 
 ```python
-def zscore(s):
-    s = pd.Series(s, dtype=float)
-    return (s - s.mean()) / (s.std() + 1e-12)
+def on_rebalance(self, cur):
+    pb, mv, roe = asof(self.pb, cur), asof(self.mv, cur), asof(self.roe, cur)
+    if pb is None or mv is None or roe is None:
+        return
+
+    mom = {}
+    for d in self.tradables:
+        if not self.live(d, cur):
+            continue
+        closes = self.hist_close(d, self.p.lookback + 1)
+        if closes is None or closes[0] <= 0:
+            continue
+        mom[d._name] = closes[-1] / closes[0] - 1.0
+    mom = pd.Series(mom, dtype=float)
+
+    common = mom.index
+    for s in (pb, mv, roe):
+        common = common.intersection(s.index)          # 四个集合取交集
+    if len(common) < self.p.topn:
+        return
+    mom, pb, mv, roe = mom[common], pb[common], mv[common], roe[common]
+
+    pb = pb[pb > 0]                                    # 剔除负 PB
+    mv = mv[mv > 0]
+    common = pb.index.intersection(mv.index)           # 过滤后再对齐一次
+    if len(common) < self.p.topn:
+        return
+    mom, pb, mv, roe = mom[common], pb[common], mv[common], roe[common]
 ```
 
-分母 `+ 1e-12` 防止某因子所有值相等、标准差为 0 时除零报错（浮点保护，详见 `backtrader详解` §15 思路）。
+**为什么对齐这么麻烦还要做？** 因为四个因子的"可用股票集合"天然不同：
+- 某只票可能**刚上市** → 没有 60 日动量；
+- 某只票可能**净资产为负** → PB 为负，被过滤；
+- 某只票可能**没有财报数据** → ROE 缺失。
 
-### 3.3 `on_rebalance`：四因子合成
+**取交集**保证"入选的每只票，四个因子都有值"——否则 score 里会出现 NaN，排序就乱了。
 
-**(1) 面板快照——`asof` 逐张切片**
-
-```python
-pb, mv, roe = asof(self.pb, cur), asof(self.mv, cur), asof(self.roe, cur)
-if pb is None or mv is None or roe is None:
-    return
-```
-
-三张面板各自 `asof(cur)`，确保都不晚于当天。注意 `asof` 内部 `iloc[-1]` 取的是**面板行**（按日期排序的 DataFrame 行），这是 pandas 行索引语义，与 Line 的 `[0]/[-1]` 无关，不要混淆。
-
-**(2) 动量因子**
+### 5.3 合成与排序
 
 ```python
-mom = {}
-for d in self.tradables:
-    if not self.live(d, cur):
-        continue
-    closes = self.hist_close(d, self.p.lookback + 1)   # list，含今日
-    if closes is None or closes[0] <= 0:
-        continue
-    mom[d._name] = closes[-1] / closes[0] - 1.0         # list[-1]=最新
-mom = pd.Series(mom, dtype=float)
-```
-
-`closes` 是 `array.array`（不是 Python list），`closes[-1]` 是**最新收盘**（今天）、`closes[0]` 是最旧（60 天前）。这里绝不能用 Line 的 `close[1]`（那是明天）。`hist_close` 已用 `len(d) < n` 守卫，只返回已走完的 K 线。
-
-**(3) 四因子对齐**
-
-```python
-common = mom.index
-for s in (pb, mv, roe):
-    common = common.intersection(s.index)
-if len(common) < self.p.topn:
-    return
-mom, pb, mv, roe = mom[common], pb[common], mv[common], roe[common]
-pb = pb[pb > 0]
-mv = mv[mv > 0]
-common = pb.index.intersection(mv.index)
-if len(common) < self.p.topn:
-    return
-mom, pb, mv, roe = mom[common], pb[common], mv[common], roe[common]
-```
-
-先求四者的并集交集，再分别剔除 PB≤0、市值≤0 的脏数据，二次交集。**对齐必须用 `index.intersection`**，因为动量来自行情（含今日）、基本面来自面板（公告滞后），股票集合天然不完全一致。
-
-**(4) 标准化 + 方向加权**
-
-```python
-score = (zscore(roe)             # 质量 +
-         - zscore(pb)            # 估值 -
-         + zscore(mom)           # 动量 +
-         - zscore(mv))           # 规模 -
+score = (zscore(roe)              # 质量 +（越高越好）
+         - zscore(pb)             # 估值 −（越低越好）
+         + zscore(mom)            # 动量 +（越高越好）
+         - zscore(mv))            # 规模 −（越小越好）
 names = score.sort_values(ascending=False).index[:self.p.topn].tolist()
 self.equal_weight_order(names, cur)
 ```
 
-四个 z-score 按方向带正负号相加，降序取前 TOPN。`equal_weight_order` 的先卖后买、整手取整、`cap=0.98` 缓冲逻辑与策略 6 完全一致（§三 / `backtrader详解` §9.1、§9.4）。
+**逐项读一遍**：
 
-### 3.4 防未来函数的三道闸门
+| 项 | 含义 | 为什么是加号/减号 |
+|---|---|---|
+| `+zscore(roe)` | 质量高 → 加分 | ROE 越大越好 |
+| `−zscore(pb)` | PB 低 → 加分 | PB 是"越小越好"，取负号后"越小→分越高" |
+| `+zscore(mom)` | 涨得多 → 加分 | 动量越大越好 |
+| `−zscore(mv)` | 市值小 → 加分 | 市值越小越好 |
 
-1. **`asof(panel, cur)`**：三张基本面面板只取 `≤ cur` 的行，且 `roe_panel` 已后移 45 天；
-2. **`hist_close` 的长度守卫**：动量只用已收盘的 K 线；
-3. **backtrader 默认成交时点**（§9.1）：`on_rebalance` 在当根收盘后触发，订单**次日开盘**成交，信号不回踩未来。
+因为 score 是"越大越好"，所以最后用 `ascending=False`（**与策略 6 的升序相反**——策略 6 用的是"名次相加、越小越好"）。
 
-### 3.5 `PanelStrategy` 的月份调度与 `__CAL__` 时钟
+---
 
-"每月触发一次"由骨架完成，原理与策略 6 一致（`runner.py`）：
+## 六、一次真实运行的轨迹
 
-```python
-def next(self):
-    cur = self.cal.datetime.date(0)
-    key = (cur.year, cur.month) if self.p.rebalance == 'monthly' else cur
-    if key == self._last_key:
-        return
-    self._last_key = key
-    self.on_rebalance(cur)
+```
+预加载因子面板（PB / 市值 / ROE）...
+[2018-01-02] 开始月度调仓（无打印）
 ```
 
-`self.cal` 来自喂入的 `__CAL__` 基准指数（每个交易日有行情），当"日历时钟"避免停牌股导致日期错乱。`rebalance='monthly'` 时 key 取 `(年, 月)`，跨月才触发一次 `on_rebalance`。本策略因四个因子都要 `asof(cur)` 切片，对"cur 是哪一天"的依赖比单因子更强——时钟的准确直接决定 `asof` 切得对不对，进而决定有没有未来函数。同样，`next()` 收盘后调用、订单次日开盘成交，自动免疫未来数据。
+加一行诊断就能看见"这一期是谁靠什么入选的"：
 
-## 四、与聚宽版的差异
+```python
+print(f'  [{cur}] Top3: {names[:3]}')
+print(f'        z(roe)={zscore(roe)[names[0]]:.2f} z(pb)={zscore(pb)[names[0]]:.2f}')
+```
 
-| 维度 | 聚宽云端版（s07） | backtrader 本地版（bt_s07） |
-|------|-------------------|------------------------------|
-| 触发方式 | `run_monthly(rebalance, 1, time='09:30')` | `PanelStrategy` 月份变化 → `on_rebalance(cur)` |
-| 基本面来源 | `get_fundamentals(query(valuation.pb_ratio, market_cap, indicator.roe))`，一次性 join 两张表 | `value_panel('pb'/'total_mv')` + `roe_panel(lag_days=45)` 三张独立面板，各自 `asof` 切片 |
-| 股票池 | `get_all_securities` 全市场 + 过滤 | `load_index_members('000300')[:40]` 当前前 40 只 |
-| ROE 时效 | 云端实时财报 | `lag_days=45` 模拟公告滞后（本地必要） |
-| 下单口径 | `order_target_value` 按金额 | `equal_weight_order` 整手股数再平衡 |
-| 数据局限 | 无 | 免费估值源约 2018 年起；当前成分股 → 幸存者偏差 |
+---
 
-**与策略 6 的进步**：聚宽版直接用 `get_fundamentals` 一次查回 PB/市值/ROE，本地版因数据分散在三张面板、且 ROE 要模拟公告滞后，必须分三次 `asof` 再交集——这正是"免费源换云端源"要额外付出的工程成本。
+## 七、与聚宽版的差异
 
-## 五、回测结果（真实数据）
+| 维度 | 聚宽 | 本地版 |
+|---|---|---|
+| 因子来源 | `get_fundamentals`（估值/财务一起取） | 估值走东财、财务走新浪 |
+| 财报时效 | 真实公告日 | 报告期 + 45 天近似 |
+| 标准化 | `standardize()` 内置函数 | 自己写 `zscore()` |
+| 下单 | `order_target_value` | `equal_weight_order` |
 
-数据来源：`results/logs/bt_s07_multi_factor_score.log`（本地实跑，未编造）。
+---
 
-| 指标 | 数值 |
-|------|------|
-| 回测区间 | 2018-01-02 ~ 2026-09-30（2123 个交易日） |
-| 初始 / 期末资金 | 100 万 → 3,957,500 元 |
-| 累计收益率 | +295.75% |
-| 年化收益率 | 17.74% |
-| 基准（沪深300）累计 | +6.61% |
-| 超额收益 | +289.14% |
-| 最大回撤 | -32.38% |
-| 夏普比率 | 0.82 |
-| 年化波动率 | 23.32% |
-| 日胜率 | 52.08% |
-| 总成交笔数 | 1278 |
-| 累计换手率 | 14809.62% |
+## 八、回测结果怎么读
 
-**解读**：四因子 z-score 打分年化 17.7%，跑赢基准但明显低于策略 6 的双因子排名法（年化 29.5%）。原因有二：一是引入了 ROE/估值这类"质量+价值"因子拉低了整体波动与弹性；二是等权合成隐含"四因子同等重要"，而实际各因子有效性差异巨大（见策略 9）。最大回撤 -32% 比策略 6 略深，说明多因子并未显著降低尾部风险。
+| 指标 | 数值 | 怎么理解 |
+|---|---|---|
+| 累计收益率 | **+295.75%** | 优于单因子（除小市值） |
+| 年化收益率 | **+17.74%** | —— |
+| 最大回撤 | **−32.38%** | 比纯小市值（−29.58%）略大 |
+| 夏普比率 | **0.82** | 优于多数单因子 |
+| 成交笔数 | 1278 | 月频 |
 
-## 六、改进方向（思考题）
+**要点**：
 
-1. **因子加权**：等权合成不合理，改用历史 IC/IR 动态赋权（见策略 9）。
-2. **去极值**：z-score 对极端值敏感，一个超大离群值会拉偏均值/标准差，应做 `Winsorize` 分位截尾。
-3. **因子中性化**：PB 与市值高度相关，简单相加会重复计权，可参考策略 8 做行业/市值中性化提纯。
+1. **多因子的收益/风险比确实优于单因子**（夏普 0.82 vs 单因子 0.36~1.19 的中位）；
+2. 但**它仍然没有跑赢纯小市值**（+295% vs +783%）——因为小市值是这段历史里最强的因子；
+3. **注意"权重是拍脑袋定的"**：四个因子的系数都是 1，这只是起点。真正的研究要做**因子有效性检验（IC/IR）**——那正是策略 9 要做的事。
+
+---
+
+## 九、易混点与常见错误
+
+| 症状 | 原因 | 正确做法 |
+|---|---|---|
+| score 里出现 nan | 某个因子有缺失 | 先取交集、再过滤 |
+| 某因子完全不起作用 | 没标准化，被大数值因子压制 | 每个因子都 z-score |
+| 排序方向反了 | 忘了 score 越大越好 | `ascending=False` |
+| 报表数据"未卜先知" | ROE 没做 45 天滞后 | `roe_panel(..., lag_days=45)` |
+| `pb` 是负数却入选 | 没过滤 | `pb[pb > 0]` |
+
+---
+
+## 十、自测题（不写代码也能做）
+
+1. 为什么四个因子必须先 z-score 再加总？直接加会怎样？
+2. 如果某期所有股票的 ROE 都一样，`zscore` 会返回什么？代码里怎么防的？
+3. 为什么"多因子"不一定比"最强的单因子"收益高？那它的价值在哪里？
+
+---
+
+## 十一、改进方向（思考题）
+
+1. **去极值**：先按 1%/99% 分位截断，再标准化，看看极端值的影响。
+2. **权重不平均**：用策略 9 的 IC/IR 方法给因子动态赋权。
+3. **因子中性化**：先剔除市值/行业暴露，再看"纯因子"的效果（策略 8）。
+4. **加约束**：限制单一行业最多 30% 仓位，避免因子把仓位全压在一个行业。

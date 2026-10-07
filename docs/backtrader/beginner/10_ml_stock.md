@@ -1,201 +1,288 @@
-# 策略 10：机器学习选股（ML Stock）· backtrader 本地版
+# 策略 10：机器学习选股（随机森林）· backtrader 本地版
 
-> 策略类型：机器学习选股（监督学习 · 二分类） ｜ 难度：★★★★★ ｜ 前置知识：策略 7 的特征工程、sklearn RandomForest、标签构造、滚动训练
-> **运行框架：backtrader（本地回测 + 免费数据）** ｜ 本策略的**聚宽云端版**见 [docs/joinquant/beginner/s10_ml_stock.md](../../joinquant/beginner/10_ml_stock.md)
+> **策略类型**：机器学习选股（监督学习 · 二分类） ｜ **难度**：★★★★★ ｜ **前置知识**：知道"特征""标签""训练/预测"三个词
+> **运行**：`python strategies/backtrader/beginner/bt_s10_ml_stock.py` ｜ **聚宽版**：[10_ml_stock.md](../../joinquant/beginner/10_ml_stock.md)
+> **语法底座**：[backtrader详解.md](../../learning/2.库详解/backtrader详解.md) 第 10 章
 
-## 一、核心思路
+---
 
-把"因子选股"抽象成监督学习问题：用历史量价特征预测"未来 N 日是否上涨"（二分类），训练随机森林，对当期股票预测上涨概率，买入概率最高的 K 只。
+## 一、这一篇你将学到什么
 
-**特征设计（5 个量价特征）**：
+前面九篇都是"人定规则、机器执行"。这一篇是**机器自己从数据里找规律**。但机器学习最容易毁掉一个回测，原因只有一个：**时序搞错，就变成了未来函数。**
 
-| 编号 | 特征 | 计算 |
-|------|------|------|
-| 1 | 20 日动量 | `close_t / close_{t-20} - 1` |
-| 2 | 60 日动量 | `close_t / close_{t-60} - 1` |
-| 3 | 20 日波动率 | 近 20 日日收益率 std |
-| 4 | 均线偏离度 | `close_t / MA60 - 1` |
-| 5 | 量比 | 近 5 日均量 / 近 60 日均量 |
+| 你会搞懂 | 一句话 |
+|---|---|
+| **特征（X）与标签（y）** | 用过去的指标预测"未来会不会涨" |
+| **标签滞后确认** | 今天的特征，要等 20 个交易日后才知道答案 |
+| **滚动训练** | 每个月只用"答案已经揭晓"的样本重训模型 |
+| **样本不足就兜底** | 前 13 个月样本不够，退回动量选股 |
+| 为什么 ML 回测最容易骗人 | 数据泄漏 + 过拟合 |
 
-**标签设计**：未来 20 个交易日收益率 > 0 → 1（上涨），否则 0。
+**读完你应该能回答**：为什么不能"一次性用全部历史训练模型，然后从头回测"？
 
-综合分即模型输出的"上涨概率" `proba[:,1]`，取最高的 TOPN 只等权持有。
+---
 
-> 给新手的直觉：把选股看成"考试预测"——历史上有很多"考生档案（特征）+ 后来成绩（标签）"的样本，随机森林从里面学出规律，再对今年这批考生预测谁会及格，挑预测及格概率最高的买。
-
-## 二、算法结构（分步拆解）
+## 二、心智模型：一个"只能看后视镜"的学习闭环
 
 ```
-每月首个交易日触发 on_rebalance(cur)
+每月调仓（收盘后）
    │
-   ├─ 1. _label_pending()：确认上一批样本的标签（时序纪律）
-   │      └─ 若 len(d)-bars0 >= HORIZON(20)：p1=d.close[0]，标签=涨/跌
+   ├─ ① 更新"到期样本"的标签：
+   │        把 20 个交易日前收集的特征拿出来，
+   │        用【今天的价格】算出"那批特征对应的真实收益" → 标签
+   │        （滞后确认，绝不提前）
    │
-   ├─ 2. 收集本期每只股票的特征 _features(d) + 当期价 d.close[0]
+   ├─ ② 收集本期特征：对每只票算 5 个指标
+   │        mom20 / mom60 / vol20 / ma_dev / vol_ratio
    │
-   ├─ 3. 训练 + 预测
-   │      ├─ 样本充足(≥400 且两类都有)：RandomForest 训练 → predict_proba 取上涨概率
-   │      └─ 样本不足：用 20 日动量兜底（等价于因子选股）
+   ├─ ③ 训练 + 预测：
+   │        样本 ≥ 400 条 → 训练随机森林 → 预测每只票"未来 20 天上涨的概率"
+   │        样本 < 400 条   → 兜底：用 20 日动量排序
    │
-   ├─ 4. 登记本期样本进 self.pending（等 20 个交易日后再打标签）
+   ├─ ④ 登记本期样本（特征 + 今天价格 + 今天的 K 线数），等 20 个交易日后打标签
    │
-   └─ 5. equal_weight_order(上涨概率最高的前 TOPN 只, cur)
+   └─ ⑤ 取概率最高的 10 只 → 等权买入 → 次日开盘成交
 ```
 
-## 三、代码逐段详解 + backtrader 语法解析
+**和前面九篇最大的不同**：这里有一个**"待打标签队列"（pending）**。它保证了"特征来自过去、标签来自未来但现在已实现"。
 
-### 3.1 状态与参数
+---
+
+## 三、核心思路
+
+**把选股变成监督学习：**
+
+| 机器学习概念 | 本策略的对应物 |
+|---|---|
+| 特征 X | 5 个量价指标（动量、波动、均线偏离、量比） |
+| 标签 y | 未来 20 个交易日**是否上涨**（二分类 0/1） |
+| 模型 | `RandomForestClassifier`（随机森林） |
+| 预测 | 每只票"上涨概率"，取最高的 10 只 |
+
+**5 个特征**：
+
+| 特征 | 算法 | 金融含义 |
+|---|---|---|
+| `mom20` | `close_t / close_{t-20} − 1` | 20 日动量 |
+| `mom60` | `close_t / close_{t-60} − 1` | 60 日动量 |
+| `vol20` | 近 20 日日收益率的标准差 | 波动率（风险） |
+| `ma_dev` | `close_t / MA60 − 1` | 偏离均线多远（超买/超卖） |
+| `vol_ratio` | 近 5 日均量 ÷ 近 60 日均量 | 量比（资金关注度） |
+
+**为什么用随机森林？** 它能捕捉**非线性**和**特征交互**（比如"低波动 + 高动量"才有效），而且不容易过拟合（相比深度网络），是量化里最常用的基线模型之一。
+
+> **⚠️ ML 回测的两个致命陷阱**（比策略本身重要）：
+> 1. **数据泄漏**：如果训练集里混进了"未来才知道的样本"，回测会好得不像话，实盘立刻打回原形；
+> 2. **过拟合**：样本少 + 特征多 → 模型记住的是噪声。本策略用 `max_depth=5`、`min_samples_leaf=20` 限制复杂度。
+
+---
+
+## 四、算法结构
+
+```
+MLStock(PanelStrategy)
+  __init__:
+      self.X, self.y = [], []      ← 已确认标签的训练集
+      self.pending = []            ← 等待打标签的样本
+      self.model = None
+
+  _features(d):  → 5 个特征（不足 61 根返回 None）
+
+  _label_pending():
+      遍历 pending：
+        moved = len(d) − bars0
+        ├─ moved ≥ 20 → 用 d.close[0] 算真实收益，加入 X/y
+        ├─ moved == 0 且连续 4 期没动 → 丢弃（长期停牌/退市）
+        └─ 否则继续等
+
+  on_rebalance(cur):
+      ① _label_pending()
+      ② 收集本期特征 feats / 价格 price
+      ③ 样本 ≥ 400 且 y 有两种取值 → 训练 + 预测
+         否则 → 用 mom20 兜底
+      ④ 登记本期样本到 pending
+      ⑤ equal_weight_order(names)
+```
+
+---
+
+## 五、代码逐段详解
+
+### 5.1 特征工程
 
 ```python
-class MLStock(PanelStrategy):
-    params = (('topn', TOPN), ('horizon', HORIZON), ('rebalance', 'monthly'),
-              ('min_samples', MIN_SAMPLES),)
+FEATURE_NAMES = ['mom20', 'mom60', 'vol20', 'ma_dev', 'vol_ratio']
 
-    def __init__(self):
-        super().__init__()
-        self.X, self.y = [], []     # 训练特征 / 标签累积列表
-        self.pending = []          # 已收集特征、等待标签确认的样本
-        self.model = None
-```
-
-`HORIZON=20`（预测窗口）、`MIN_SAMPLES=400`（训练样本下限）。状态 `X/y` 是扩张的训练集，`pending` 是"特征已采、标签未到"的样本队列——这是滚动训练避免未来函数的核心数据结构。
-
-### 3.2 特征工程 `_features`
-
-```python
 def _features(self, d):
-    c20 = self.hist_close(d, 21)
-    c60 = self.hist_close(d, 61)
+    c20 = self.hist_close(d, 21)          # 21 个点 → 20 日涨幅
+    c60 = self.hist_close(d, 61)          # 61 个点 → 60 日涨幅
     if c20 is None or c60 is None:
         return None
-    if c60[0] <= 0 or min(c60) <= 0:
+    if c60[0] <= 0 or min(c60) <= 0:      # 防御异常价格
         return None
-    vols = d.volume.get(size=61)                 # list，近 61 根成交量
+    vols = d.volume.get(size=61)
     if len(vols) < 61:
         return None
     rets = pd.Series(c20, dtype=float).pct_change().dropna()
     return [
-        c20[-1] / c20[0] - 1.0,                  # 20 日动量（list[-1]=最新）
-        c60[-1] / c60[0] - 1.0,                  # 60 日动量
-        float(rets.std()),                        # 20 日波动率
-        c60[-1] / (sum(c60) / len(c60)) - 1.0,   # 均线偏离度
-        float(np.mean(vols[-5:]) / (np.mean(vols) + 1e-9)),  # 量比
+        c20[-1] / c20[0] - 1.0,                        # 20 日动量
+        c60[-1] / c60[0] - 1.0,                        # 60 日动量
+        float(rets.std()),                             # 20 日波动率
+        c60[-1] / (sum(c60) / len(c60)) - 1.0,         # 均线偏离度
+        float(np.mean(vols[-5:]) / (np.mean(vols) + 1e-9)),   # 量比
     ]
 ```
 
-要点与索引语义：
+| 细节 | 为什么 |
+|---|---|
+| 用 21/61 个点 | 算"20/60 日涨幅"需要 N+1 个价格 |
+| `min(c60) <= 0` | 前复权极端情况下可能出现非正价格，防御 |
+| `+ 1e-9` | 防止均量为 0 时除零 |
+| 返回的是**列表**（不是 Series） | 因为要直接喂给 sklearn |
 
-- `hist_close(d, 61)` 返回 list，需 61 根（含今日）才能算"60 日动量"，所以取 `lookback+1` 根。**序列语义**：`c20[-1]` 是最新收盘、`c20[0]` 是 21 天前，`c20[-1]/c20[0]-1` 即 20 日涨幅。
-- `d.volume.get(size=61)`：`get()` 返回 **array**（`array.array`，**不是 list**；但索引语义同 list）（详见 `backtrader详解` §2.2），`vols[-5:]` 取最近 5 根，`vols` 整体取近 60 日均量，二者之比即量比。
-- `min(c60) <= 0` 守卫排除停牌/异常价。`pct_change().dropna()` 算日收益率序列再取 std。
-- 所有特征只用**已收盘的 K 线**（hist_close 长度守卫在内部），不偷看未来。
+> **序列语义提醒**：`c20` 来自 `get(size=21)`，是**数组**：`[0]` 最旧、`[-1]` 最新。所以 `c20[-1]/c20[0]-1` 才是"20 日涨幅"。
 
-### 3.3 打标签 `_label_pending` —— 时序纪律
+### 5.2 标签：滞后 20 个交易日才揭晓
 
 ```python
 def _label_pending(self):
     still = []
-    for code, feats, p0, bars0 in self.pending:
+    for code, feats, p0, bars0, miss in self.pending:
         d = self.getdatabyname(code)
-        if len(d) - bars0 >= self.p.horizon:       # 已过预测窗口，标签可确认
-            p1 = d.close[0]                          # 当前价（Line 语义，当根）
+        moved = len(d) - bars0
+        if moved >= self.p.horizon:                    # 已过预测窗口
+            p1 = d.close[0]
             if p0 > 0 and p1 > 0:
                 self.X.append(feats)
                 self.y.append(1 if p1 / p0 - 1.0 > 0 else 0)
+        elif moved == 0 and miss >= 4:
+            continue                                   # 长期停牌/退市，丢弃
         else:
-            still.append((code, feats, p0, bars0))
+            still.append((code, feats, p0, bars0, miss + (1 if moved == 0 else 0)))
     self.pending = still
 ```
 
-- `self.getdatabyname(code)`：按名字取回该标的的 Line 数据源（与 §5.4 一致）。
-- `len(d)` 是该数据源已推进的 K 线总数；`bars0` 是登记样本时 `len(d)` 的值。`len(d) - bars0 >= 20` 表示"自登记起已过去至少 20 个交易日"——**标签此刻才确认**，绝不提前用未来收益。
-- `p1 = d.close[0]`：Line 语义，当根收盘价（今天），与 list 的 `[-1]` 不同，这里的 `[0]` 才是"最新"。`p1/p0-1 > 0` 即未来 20 日上涨 → 标签 1。
+**为什么用 `len(d) - bars0` 而不是日历天数？**
+因为 `moved` 数的是**这只股票自己的 K 线数**。停牌期间它的 K 线数不增加，所以**会自动等待**——这正是我们想要的行为（停牌期间无法交易，也不该拿它当样本）。
 
-### 3.4 `on_rebalance`：训练、预测、兜底、登记
+**另一个关键点**：`p1 = d.close[0]` 用的是**确认日的收盘价**。因为 `on_rebalance` 是月度触发的，实际等待时间会 ≥20 个交易日（偏保守，不会偷看未来）。
+
+### 5.3 训练与预测
 
 ```python
-def on_rebalance(self, cur):
-    self._label_pending()                       # 1) 先确认上批标签
-    feats, price = {}, {}
-    for d in self.tradables:
-        if not self.live(d, cur):
-            continue
-        f = self._features(d)
-        if f is None:
-            continue
-        feats[d._name] = f
-        price[d._name] = d.close[0]
-    if len(feats) < self.p.topn:
-        return
-    codes = list(feats)
-    if len(self.X) >= self.p.min_samples and len(set(self.y)) > 1:
-        self.model = RandomForestClassifier(
-            n_estimators=200, max_depth=5, min_samples_leaf=20,
-            random_state=42, n_jobs=-1)
-        self.model.fit(self.X, self.y)
-        proba = self.model.predict_proba([feats[c] for c in codes])[:, 1]
-        order = [codes[i] for i in np.argsort(-proba)]
-        names = order[:self.p.topn]
-        top_p = max(proba)
-    else:
-        order = sorted(codes, key=lambda c: feats[c][0], reverse=True)
-        names = order[:self.p.topn]             # 样本不足：20 日动量兜底
-    for c in codes:
-        self.pending.append((c, feats[c], price[c], len(self.getdatabyname(c))))
-    self.equal_weight_order(names, cur)
+if len(self.X) >= self.p.min_samples and len(set(self.y)) > 1:
+    self.model = RandomForestClassifier(
+        n_estimators=200, max_depth=5, min_samples_leaf=20,
+        random_state=42, n_jobs=-1)
+    self.model.fit(self.X, self.y)
+    proba = self.model.predict_proba([feats[c] for c in codes])[:, 1]
+    order = [codes[i] for i in np.argsort(-proba)]
+    names = order[:self.p.topn]
+else:
+    order = sorted(codes, key=lambda c: feats[c][0], reverse=True)   # 动量兜底
+    names = order[:self.p.topn]
 ```
 
-- **滚动扩窗训练**：`self.X/self.y` 只增不减，每期把刚确认的标签样本追加进去，模型用"截至上月能观察到标签"的全部历史重训——从根上杜绝未来函数。日志显示前 13 个月（2016-05~2017-05）样本不足 400，用 20 日动量兜底；2017-06 起样本≥426 才启用 ML（最高上涨概率约 0.55~0.85）。
-- **过拟合防护**：`max_depth=5, min_samples_leaf=20` 限制单棵树的复杂度，避免模型"记住噪声"。样本少时直接降级为动量因子，也是防过拟合的兜底。
-- `predict_proba(...)[:, 1]` 取"正类（上涨）"概率；`np.argsort(-proba)` 降序排，取前 TOPN。
-- 末尾把**本期样本**压入 `pending`，登记时记录 `len(getdatabyname(c))` 作为 `bars0`——下一期 `_label_pending` 用它与当前 `len(d)` 的差判断标签是否可确认。
+| 参数 | 作用 |
+|---|---|
+| `n_estimators=200` | 200 棵树（越多越稳，越慢） |
+| `max_depth=5` | 限制树深 → **防过拟合** |
+| `min_samples_leaf=20` | 叶子至少 20 个样本 → **防过拟合** |
+| `random_state=42` | 固定随机种子 → **结果可复现** |
+| `n_jobs=-1` | 用满 CPU |
+| `len(set(y)) > 1` | 标签只有一种取值时无法训练（会报错） |
+| 兜底分支 | 前 13 个月样本不足，先用动量选股，避免"没模型就空仓" |
 
-### 3.5 防未来函数的三个手段
+### 5.4 登记样本
 
-1. **滚动训练**：只用"标签已确认"的历史样本，`pending` 机制保证标签滞后 20 日；
-2. **标签滞后确认**：`_label_pending` 用 `len(d)-bars0 >= HORIZON` 严格挡住未到期样本；
-3. **只用已收盘数据**：`_features` 全靠 `hist_close` 长度守卫 + `d.close[0]` 当根价。
+```python
+for i, c in enumerate(codes):
+    self.pending.append((c, np.array(vectors[i]), price[c],
+                         len(self.getdatabyname(c)), 0))
+```
 
-### 3.6 `PanelStrategy` 的月份调度与 `__CAL__` 时钟
+记下 `len(d)`（`bars0`）作为"起点刻度"，以后靠它判断"过了多久"。
 
-"每月触发一次"由骨架完成（key 取 `(年, 月)`，`runner.py`），与前面策略一致。本策略的滚动训练对节奏极敏感：`pending` 里样本的"登记月"与 `_label_pending` 的"确认月"必须间隔 `HORIZON=20` 个交易日，靠 `len(d)-bars0` 精确计数，不依赖具体日期；而 `on_rebalance` 每月一次保证"采特征、登记、下月算 IC"的闭环稳定。同样，订单次日开盘成交，与"标签滞后 20 日"共同挡住未来函数。
+---
 
-## 四、与聚宽版的差异
+## 六、一次真实运行的轨迹
 
-| 维度 | 聚宽云端版（s10） | backtrader 本地版（bt_s10） |
-|------|-------------------|------------------------------|
-| 训练方式 | 一次性取全市场长窗口，遍历历史时点构造训练集 | **逐期滚动扩窗**：每月用"标签已确认"样本重训 |
-| 标签时点 | `close.iloc[i+HORIZON]/close.iloc[i]-1`，向量化构造 | `pending` 队列 + `len(d)-bars0>=HORIZON` 逐样本确认 |
-| 特征来源 | `history(total,'1d','close',pool)` 批量矩阵 | 逐标的 `hist_close` + `d.volume.get` |
-| 触发/下单 | `run_daily` + `order_target_value` | `on_rebalance` + `equal_weight_order`（整手） |
-| 股票池 | `get_index_stocks('000300')` 历史成分 | `load_index_members('000300')[:40]` 当前成分（幸存者偏差） |
-| 调仓频率 | 每 20 个交易日 | 月度（`rebalance='monthly'`） |
+```
+  [2016-05-03] 样本不足（0/400），暂用 20 日动量兜底
+  [2016-06-01] 样本不足（38/400），暂用 20 日动量兜底
+  ...
+  [2017-06-01] ML 预测（样本 426 条）最高上涨概率 0.612
+  模型特征重要性：mom20=0.21, mom60=0.18, vol20=0.24, ma_dev=0.19, vol_ratio=0.18
+  [2017-07-03] ML 预测（样本 468 条）最高上涨概率 0.587
+  ...
+```
 
-**本地核心改动**：聚宽一次性拉全历史向量化造样本，本地改为"逐期滚动"，代价是前 13 个月样本不足只能动量兜底（日志明确标注），但从机制上更严谨。
+- **前 13 个月走兜底分支**：因为要等 20 个交易日才打标签，样本积累很慢；
+- **特征重要性接近平均**：说明 5 个特征贡献差不多，没有一个特别强；
+- **最高概率 0.55~0.85**：模型输出的是"概率"，不是"一定会涨"。
 
-## 五、回测结果（真实数据）
+---
 
-数据来源：`results/logs/bt_s10_ml_stock.log`（本地实跑，未编造）。
+## 七、与聚宽版的差异
 
-| 指标 | 数值 |
-|------|------|
-| 回测区间 | 2016-01-04 ~ 2026-09-30（2611 个交易日） |
-| 初始 / 期末资金 | 100 万 → 4,800,745 元 |
-| 累计收益率 | +380.07% |
-| 年化收益率 | 16.35% |
-| 基准（沪深300）累计 | +25.61% |
-| 超额收益 | +354.46% |
-| 最大回撤 | -33.65% |
-| 夏普比率 | 0.83 |
-| 年化波动率 | 20.86% |
-| 日胜率 | 52.19% |
-| 总成交笔数 | 2047 |
-| 累计换手率 | 41735.48% |
+| 维度 | 聚宽 | 本地版 |
+|---|---|---|
+| 训练方式 | 一次性取全市场样本训练 | **逐期滚动扩窗**训练 |
+| 标签 | 未来 N 日收益 | 同（20 交易日） |
+| 数据量 | 全市场（几千只） | 40 只（样本少得多） |
+| 兜底 | 无 | 样本不足用动量 |
 
-**解读**：ML 选股年化 16.35%、夏普 0.83，跑赢沪深300 且波动最低（20.86%）；但注意**基准累计 +25.61%** 是因为本策略区间从 2016 年起（比 6~9 早两年），沪深300 在 2016–2026 累计其实涨了 25.6%，超额 +354% 仍可观。累计换手率高达 41735%——ML 每月全换仓、且候选池小，摩擦成本敏感度极高；前段动量兜底期收益贡献也需客观看待。
+**聚宽版样本多、但容易"用全期数据训练"**；本地版样本少、但**时序纪律更严格**（滚动训练 + 标签滞后确认），更适合教学。
 
-## 六、改进方向（思考题）
+---
 
-1. **加止损**：`equal_weight_order` 不做个股止损，可用 `self.buy_bracket` 给单票挂止损腿，压低 -33.65% 回撤。
-2. **特征/标签优化**：当前仅 5 个量价特征，可加入估值/质量类（策略 7 的因子）做多源特征，并测试不同 `HORIZON`。
-3. **缓解幸存者偏差**：本地用当前沪深300 成分，可改历史成分或更大股票池，并评估样本外（如近 3 年）表现，警惕过拟合。
+## 八、回测结果怎么读
+
+| 指标 | 数值 | 怎么理解 |
+|---|---|---|
+| 累计收益率 | **+380.07%** | 优于多数策略 |
+| 年化收益率 | **+16.35%** | —— |
+| 最大回撤 | **−33.65%** | 与多因子相当 |
+| 夏普比率 | **0.83** | 略优于多因子（0.82） |
+| 成交笔数 | 2047 | 月频，但笔数明显更多 |
+
+**要点：**
+
+1. **收益不错，但要警惕"ML 光环"**：其中**前 13 个月用的是动量兜底**（ML 还没启动），所以"收益"里混着动量的贡献；
+2. **样本量太小**：40 只股票 × 每月 ≈ 40 条/期，一年才 480 条，**远低于** ML 通常需要的量级；
+3. **换手更高**（2047 笔）：概率排序比因子排序更"抖动"，容易频繁换仓；
+4. **随机性**：虽然固定了 `random_state=42`，但换股票池/换区间，结论可能大幅变化。
+
+> **教学价值**：这一篇教会你**怎么把一个策略做得"时序正确"**——滚动训练、标签滞后、样本不足兜底。这些工程细节，比"模型用了哪个算法"重要得多。
+
+---
+
+## 九、易混点与常见错误
+
+| 症状 | 原因 | 正确做法 |
+|---|---|---|
+| 回测效果好得离谱 | 用了全部历史一次训练（数据泄漏） | 逐期滚动训练，只用"已揭晓标签"的样本 |
+| 标签当天就揭晓 | 没做滞后确认 | `pending` 队列 + `moved >= horizon` |
+| 报错 `ValueError: n_estimators`/标签只有一类 | `set(y)` 只有一个取值 | 加 `len(set(self.y)) > 1` 判断 |
+| 结果每次跑都不一样 | 没固定随机种子 | `random_state=42` |
+| 前几个月完全不动 | 走兜底分支但没打印 | 兜底分支也有选股（动量），不会空仓 |
+| `pending` 越堆越多 | 退市/长期停牌股 | 连续 4 期没动的直接丢弃 |
+
+---
+
+## 十、自测题（不写代码也能做）
+
+1. 为什么"一次性用全部历史训练、然后从头回测"是错的？错在哪一步？
+2. `pending` 队列里存 `bars0 = len(d)` 有什么用？为什么不直接存日期？
+3. 为什么前 13 个月不训练模型？如果那时强制训练会怎样？
+4. 这个策略的收益里，有多少可能来自"动量兜底"而不是 ML？
+
+---
+
+## 十一、改进方向（思考题）
+
+1. **加特征**：加入 PB/ROE（基本面）、换手率、行业哑变量。
+2. **换标签**：从"是否上涨"改成"是否跑赢中位数"（相对收益），更贴近选股场景。
+3. **时序交叉验证**：用 Purged K-Fold 评估模型，避免"用未来验证过去"。
+4. **控制换手**：只在"预测概率进入前 5 或掉出前 15"时才调仓，减少抖动。
+5. **特征标准化**：树模型对量纲不敏感，但换成逻辑回归/神经网络就必须先 `StandardScaler`。
