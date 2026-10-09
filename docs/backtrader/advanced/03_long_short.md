@@ -2,7 +2,7 @@
 
 > **策略类型**：绝对收益 / 市场中性 ｜ **难度**：★★★★★ ｜ **前置知识**：知道"做空""Beta"
 > **运行**：`python strategies/backtrader/advanced/bt_a03_long_short.py` ｜ **聚宽版**：[03_long_short.md](../../joinquant/advanced/03_long_short.md)
-> **语法底座**：[backtrader详解.md](../../learning/2.库详解/backtrader详解.md) 第 5 章、第 9.6 节（做空）
+> **语法底座**：[backtrader详解.md](../../learning/2.库详解/数据分析与量化研究相关库/backtrader详解.md) 第 5 章、第 9.6 节（做空）
 
 ---
 

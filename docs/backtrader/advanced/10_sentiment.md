@@ -2,7 +2,7 @@
 
 > **策略类型**：另类数据 / 情绪分析（代理变量） ｜ **难度**：★★★★★ ｜ **前置知识**：读完策略 7/8 再看这一篇
 > **运行**：`python strategies/backtrader/advanced/bt_a10_sentiment.py` ｜ **聚宽版**：[10_sentiment.md](../../joinquant/advanced/10_sentiment.md)
-> **语法底座**：[backtrader详解.md](../../learning/2.库详解/backtrader详解.md) 第 10 章
+> **语法底座**：[backtrader详解.md](../../learning/2.库详解/数据分析与量化研究相关库/backtrader详解.md) 第 10 章
 
 ---
 

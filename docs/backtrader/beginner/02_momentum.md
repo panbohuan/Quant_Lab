@@ -3,7 +3,7 @@
 > **策略类型**：单因子选股（量价因子） ｜ **难度**：★★☆☆☆ ｜ **前置知识**：知道"收益率 = 涨跌幅"，会看排序
 > **运行**：`python strategies/backtrader/beginner/bt_s02_momentum.py`
 > **聚宽云端版**：[docs/joinquant/beginner/02_momentum.md](../../joinquant/beginner/02_momentum.md)
-> **语法底座**：[backtrader详解.md](../../learning/2.库详解/backtrader详解.md) 第 10 章（多标的与组合调仓）
+> **语法底座**：[backtrader详解.md](../../learning/2.库详解/数据分析与量化研究相关库/backtrader详解.md) 第 10 章（多标的与组合调仓）
 
 ---
 

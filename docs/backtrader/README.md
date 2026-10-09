@@ -3,14 +3,14 @@
 本目录是 Quant_Lab 的**两套独立教材之一**：讲的是 `strategies/backtrader/` 里 20 个策略的**本地 backtrader 实现**，配套免费长周期数据，用 `python` 直接跑。
 
 > 另一套是聚宽云端版 → [`docs/joinquant/`](../joinquant/README.md)
-> 语法底座（必读）→ [`docs/learning/2.库详解/backtrader详解.md`](../learning/2.库详解/backtrader详解.md)
+> 语法底座（必读）→ [`docs/learning/2.库详解/数据分析与量化研究相关库/backtrader详解.md`](../learning/2.库详解/数据分析与量化研究相关库/backtrader详解.md)
 
 ## 一、先读什么
 
 ```
 0. 环境与数据     → ../本地回测使用指南.md
    └─ 装依赖、拉数据、跑第一个策略、常见报错
-1. 语法底座       → ../learning/2.库详解/backtrader详解.md
+1. 语法底座       → ../learning/2.库详解/数据分析与量化研究相关库/backtrader详解.md
    └─ Cerebro / Strategy / 指标 / 分析器 / 费用滑点 / 聚宽对照表
 2. 入门 10 篇     → beginner/01 … 10（建议按顺序）
 3. 进阶 10 篇     → advanced/01 … 10

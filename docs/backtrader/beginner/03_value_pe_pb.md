@@ -2,7 +2,7 @@
 
 > **策略类型**：单因子选股（基本面·估值） ｜ **难度**：★★☆☆☆ ｜ **前置知识**：知道"净资产""市值"
 > **运行**：`python strategies/backtrader/beginner/bt_s03_value_pe_pb.py` ｜ **聚宽版**：[03_value_pe_pb.md](../../joinquant/beginner/03_value_pe_pb.md)
-> **语法底座**：[backtrader详解.md](../../learning/2.库详解/backtrader详解.md) 第 10 章、第 14 章（btlab 工具层）
+> **语法底座**：[backtrader详解.md](../../learning/2.库详解/数据分析与量化研究相关库/backtrader详解.md) 第 10 章、第 14 章（btlab 工具层）
 
 ---
 

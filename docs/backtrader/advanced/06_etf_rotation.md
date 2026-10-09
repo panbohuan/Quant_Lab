@@ -2,7 +2,7 @@
 
 > **策略类型**：资产配置 / ETF 轮动 ｜ **难度**：★★★★☆ ｜ **前置知识**：知道 ETF 是什么
 > **运行**：`python strategies/backtrader/advanced/bt_a06_etf_rotation.py` ｜ **聚宽版**：[06_etf_rotation.md](../../joinquant/advanced/06_etf_rotation.md)
-> **语法底座**：[backtrader详解.md](../../learning/2.库详解/backtrader详解.md) 第 10 章
+> **语法底座**：[backtrader详解.md](../../learning/2.库详解/数据分析与量化研究相关库/backtrader详解.md) 第 10 章
 
 ---
 

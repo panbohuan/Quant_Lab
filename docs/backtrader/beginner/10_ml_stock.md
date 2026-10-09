@@ -2,7 +2,7 @@
 
 > **策略类型**：机器学习选股（监督学习 · 二分类） ｜ **难度**：★★★★★ ｜ **前置知识**：知道"特征""标签""训练/预测"三个词
 > **运行**：`python strategies/backtrader/beginner/bt_s10_ml_stock.py` ｜ **聚宽版**：[10_ml_stock.md](../../joinquant/beginner/10_ml_stock.md)
-> **语法底座**：[backtrader详解.md](../../learning/2.库详解/backtrader详解.md) 第 10 章
+> **语法底座**：[backtrader详解.md](../../learning/2.库详解/数据分析与量化研究相关库/backtrader详解.md) 第 10 章
 
 ---
 

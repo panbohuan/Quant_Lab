@@ -4,7 +4,7 @@
 >
 > **运行**：`python strategies/backtrader/beginner/bt_s01_ma_cross.py`
 > **聚宽云端版**：[docs/joinquant/beginner/01_ma_cross.md](../../joinquant/beginner/01_ma_cross.md)
-> **语法底座**：[backtrader详解.md](../../learning/2.库详解/backtrader详解.md)（本篇涉及第 2 章 Line 索引、第 5 章 Strategy、第 6 章 Indicator）
+> **语法底座**：[backtrader详解.md](../../learning/2.库详解/数据分析与量化研究相关库/backtrader详解.md)（本篇涉及第 2 章 Line 索引、第 5 章 Strategy、第 6 章 Indicator）
 
 ---
 

@@ -137,7 +137,7 @@ docs/
 │   ├── README.md         #   本套索引（阅读顺序 + 每篇讲透的 backtrader 语法）
 │   ├── beginner/         #   01_ma_cross.md … 10_ml_stock.md
 │   └── advanced/         #   01_volatility_targeting.md … 10_sentiment.md
-└── learning/2.库详解/backtrader详解.md   # 【新】backtrader 完整语法手册
+└── learning/2.库详解/数据分析与量化研究相关库/backtrader详解.md   # 【新】backtrader 完整语法手册
 ```
 
 - 原 `docs/beginner/`、`docs/advanced/`（内容为聚宽写法）**整体迁入** `docs/joinquant/`，
@@ -146,7 +146,7 @@ docs/
   每篇六段式——核心思路 / 算法结构 / **代码逐段详解（讲透本篇用到的 backtrader API）** /
   与聚宽版的差异 / **回测结果（引用 `results/logs/` 的真实实测数字）** / 改进方向。
 
-### 二、新增《backtrader 详解》语法手册（`docs/learning/2.库详解/backtrader详解.md`）
+### 二、新增《backtrader 详解》语法手册（`docs/learning/2.库详解/数据分析与量化研究相关库/backtrader详解.md`）
 
 约 960 行、20 节，是本地回测的语法底座，覆盖：
 

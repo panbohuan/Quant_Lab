@@ -2,7 +2,7 @@
 
 > **策略类型**：跨品种 / 可转债 ｜ **难度**：★★★★☆ ｜ **前置知识**：知道什么是"可转债"
 > **运行**：`python strategies/backtrader/advanced/bt_a05_convertible_bond.py` ｜ **聚宽版**：[05_convertible_bond.md](../../joinquant/advanced/05_convertible_bond.md)
-> **语法底座**：[backtrader详解.md](../../learning/2.库详解/backtrader详解.md) 第 10 章、第 14 章
+> **语法底座**：[backtrader详解.md](../../learning/2.库详解/数据分析与量化研究相关库/backtrader详解.md) 第 10 章、第 14 章
 
 ---
 

@@ -2,7 +2,7 @@
 
 > **策略类型**：均值回归 / 反转 ｜ **难度**：★★★★★**（难在成本与降级）** ｜ **前置知识**：知道"均值回归"
 > **运行**：`python strategies/backtrader/advanced/bt_a09_intraday_meanrev.py` ｜ **聚宽版**：[09_intraday_meanrev.md](../../joinquant/advanced/09_intraday_meanrev.md)
-> **语法底座**：[backtrader详解.md](../../learning/2.库详解/backtrader详解.md) 第 10 章
+> **语法底座**：[backtrader详解.md](../../learning/2.库详解/数据分析与量化研究相关库/backtrader详解.md) 第 10 章
 
 ---
 

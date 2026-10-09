@@ -2,7 +2,7 @@
 
 > **策略类型**：另类策略 / 事件驱动 ｜ **难度**：★★★★☆ ｜ **前置知识**：知道"净利润增长率"
 > **运行**：`python strategies/backtrader/advanced/bt_a04_event_driven.py` ｜ **聚宽版**：[04_event_driven.md](../../joinquant/advanced/04_event_driven.md)
-> **语法底座**：[backtrader详解.md](../../learning/2.库详解/backtrader详解.md) 第 10 章、第 14 章
+> **语法底座**：[backtrader详解.md](../../learning/2.库详解/数据分析与量化研究相关库/backtrader详解.md) 第 10 章、第 14 章
 
 ---
 

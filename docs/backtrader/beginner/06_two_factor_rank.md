@@ -2,7 +2,7 @@
 
 > **策略类型**：双因子选股（量价 + 规模） ｜ **难度**：★★★☆☆ ｜ **前置知识**：理解"排名"
 > **运行**：`python strategies/backtrader/beginner/bt_s06_two_factor_rank.py` ｜ **聚宽版**：[06_two_factor_rank.md](../../joinquant/beginner/06_two_factor_rank.md)
-> **语法底座**：[backtrader详解.md](../../learning/2.库详解/backtrader详解.md) 第 10 章
+> **语法底座**：[backtrader详解.md](../../learning/2.库详解/数据分析与量化研究相关库/backtrader详解.md) 第 10 章
 
 ---
 

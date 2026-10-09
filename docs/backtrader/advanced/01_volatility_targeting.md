@@ -2,7 +2,7 @@
 
 > **策略类型**：风险控制 / 仓位管理 ｜ **难度**：★★★★☆ ｜ **前置知识**：知道"标准差"是什么
 > **运行**：`python strategies/backtrader/advanced/bt_a01_volatility_targeting.py` ｜ **聚宽版**：[01_volatility_targeting.md](../../joinquant/advanced/01_volatility_targeting.md)
-> **语法底座**：[backtrader详解.md](../../learning/2.库详解/backtrader详解.md) 第 5 章、第 9 章
+> **语法底座**：[backtrader详解.md](../../learning/2.库详解/数据分析与量化研究相关库/backtrader详解.md) 第 5 章、第 9 章
 
 ---
 
