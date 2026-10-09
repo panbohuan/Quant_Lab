@@ -311,6 +311,71 @@ def load_index_members(index_code='000300'):
     return codes
 
 
+# ==================== 全市场股票池（★ 含幸存者偏差提示） ====================
+
+def load_all_stocks(use_cache=True, verbose=False):
+    """全市场 A 股代码与名称（akshare，**当前快照**）。
+
+    ⚠️ 重要：这是【今天仍上市】的股票列表，**不含已退市 / 被并购 / 长期停牌的股票**。
+       用它构造历史回测的股票池 → **幸存者偏差**：历史上会退市的那批股票你根本买不到，
+       于是回测收益被系统性高估。机理与替代方案见 `docs/股票池与幸存者偏差.md`。
+
+    返回 DataFrame[code, name]（code 为 6 位纯数字，如 '600000'）。
+    """
+    fp = _cache_path('all_stocks.csv')
+    if use_cache and _fresh(fp, 30):
+        return pd.read_csv(fp, dtype={'code': str})
+    import akshare as ak
+    df = _retry(lambda: ak.stock_info_a_code_name())
+    if df is None or len(df) == 0:
+        raise RuntimeError('未取到全市场股票列表')
+    df = df.rename(columns={df.columns[0]: 'code', df.columns[1]: 'name'})
+    out = df[['code', 'name']].copy()
+    out['code'] = out['code'].astype(str).str.extract(r'(\d{6})', expand=False)
+    out = out.dropna(subset=['code']).drop_duplicates('code').reset_index(drop=True)
+    if verbose:
+        print(f'[btlab] 全市场列表：{len(out)} 只（当前快照，含幸存者偏差）')
+    if use_cache:
+        out.to_csv(fp, index=False, encoding='utf-8')
+    return out
+
+
+def load_market_universe(start='2015-01-01', end=None, adjust='qfq',
+                         sample=300, min_bars=120, seed=42, verbose=True):
+    """全市场抽样 + 「当时可知」的过滤条件，构造股票池。返回 {归一化代码: DataFrame}。
+
+    参数
+    ----
+    sample   : 从全市场随机抽多少只（控制数据量；None = 全市场，非常慢）
+    min_bars : 至少要有多少根 K 线才纳入。等价于「截至该时点已上市满 min_bars 个交易日」，
+               这是**时点内可得**的信息（不是用今天的上市状态倒推历史），所以不会引入未来函数。
+    seed     : 随机种子（固定 → 结果可复现）
+
+    ⚠️ 三个必须知道的限制
+    ----------------------
+    1. **幸存者偏差依然存在**：代码列表来自 `load_all_stocks()`，只含当前仍上市的公司。
+       本函数能消除的是「指数成分股」带来的**入选偏差**（沪深300 本身就是被挑出来的大票），
+       **不能**消除退市偏差。
+    2. **不要用『当前』的 ST 名单 / 当前市值来过滤历史**——那会把今天的状态带到过去，
+       反而引入新的未来函数。正确做法：在回测循环里用「截至当时」的数据判断
+       （例如 `name` 里当时的 ST 状态、滚动成交额、上市天数）。
+    3. **真正的解法是改用申万行业指数**（指数点位序列连续，不存在成分股退市导致历史消失的问题，
+       见 `bt_a02_sector_rotation`）。详见 `docs/股票池与幸存者偏差.md`。
+    """
+    from random import Random
+    stocks = load_all_stocks(verbose=verbose)
+    codes = stocks['code'].tolist()
+    if sample and sample < len(codes):
+        codes = Random(seed).sample(codes, sample)      # 固定种子 → 可复现
+    data = load_many(codes, start=start, end=end, adjust=adjust,
+                     verbose=verbose, kind='stock')
+    kept = {k: v for k, v in data.items() if len(v) >= min_bars}
+    if verbose:
+        print(f'[btlab] 全市场股票池：抽样 {len(codes)} 只 → 数据可用 {len(data)} 只 '
+              f'→ 满足上市满 {min_bars} 日 {len(kept)} 只')
+    return kept
+
+
 # ============================ 个股估值 / 市值 ============================
 
 _VALUE_RENAME = {'数据日期': 'date', '当日收盘价': 'close', '总市值': 'total_mv',
@@ -448,6 +513,37 @@ def load_sw_members(code, tries=4, wait=2.0):
         raise RuntimeError(f'申万行业 {num} 成分为空')
     pd.DataFrame({'code': codes}).to_csv(fp, index=False, encoding='utf-8')
     return codes
+
+
+def load_sw_universe(start='2010-01-01', end=None, min_bars=61, verbose=True):
+    """全部申万一级行业指数日线 —— 用「行业指数」当标的的股票池。
+
+    **为什么它能避免幸存者偏差**：指数会定期调整样本股，但**指数点位序列是连续发布的**，
+    不会因为某只成分股退市/被并购而"在历史上消失"。所以拿行业指数做历史回测，
+    不存在"只买到了活下来的公司"这个问题。
+
+    **代价（必须知道）**：指数本身**不可直接交易**。要落地得用
+      · 对应的行业 ETF（有 20+ 个申万一级行业有 ETF），或
+      · 行业成分股组合（那就又回到"需要历史成分股"的问题）。
+    详见 `docs/股票池与幸存者偏差.md`。
+
+    返回 {行业名: DataFrame}（每个值都是标准 OHLCV 日线，可直接喂进 backtrader）。
+    """
+    sw = sw_industries()
+    out = {}
+    for _, row in sw.iterrows():
+        try:
+            df = load_sw_index(row['code'], start=start, end=end)
+        except Exception as e:  # noqa: BLE001
+            if verbose:
+                print(f'  [跳过] {row["name"]}: {str(e)[:50]}')
+            continue
+        if len(df) >= min_bars:
+            out[row['name']] = df
+    if verbose:
+        print(f'[btlab] 申万一级行业指数：{len(out)}/{len(sw)} 个可用'
+              f'（指数不可直接交易，落地需行业 ETF）')
+    return out
 
 
 # ============================ 指数估值（市场温度） ============================

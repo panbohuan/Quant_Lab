@@ -14,7 +14,7 @@ ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..')
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
-from btlab.datasource import load_daily, sw_industries, load_sw_index  # noqa: E402
+from btlab.datasource import load_daily, load_sw_universe           # noqa: E402
 from btlab.runner import PanelStrategy, run_strategy                   # noqa: E402
 
 # ============================ 回测参数 ============================
@@ -53,20 +53,10 @@ class SectorRotation(PanelStrategy):
 
 
 def main():
-    print('[1/3] 获取申万一级行业列表 ...')
-    sw = sw_industries()
-    print(f'      共 {len(sw)} 个行业')
+    print('[1/3] 加载申万一级行业指数（用行业指数当标的 → 无幸存者偏差）...')
+    data = load_sw_universe(start=START, end=END, min_bars=LOOKBACK + 1)
 
-    print('[2/3] 加载行业指数日线 ...')
-    data = {}
-    for _, row in sw.iterrows():
-        try:
-            df = load_sw_index(row['code'], start=START, end=END)
-            if len(df) >= LOOKBACK + 1:
-                data[row['name']] = df
-        except Exception as e:  # noqa: BLE001
-            print(f'  [跳过] {row["name"]}: {str(e)[:50]}')
-    print(f'      可用行业指数 {len(data)} 个')
+    print('[2/3] 加入交易日历 ...')
     data['__CAL__'] = load_daily(BENCHMARK, start=START, end=END)
 
     print('[3/3] 开始 backtrader 回测 ...')
