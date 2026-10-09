@@ -88,13 +88,15 @@ Quant_Lab/
     │   └── advanced/          #   01_volatility_targeting.md … 10_sentiment.md
     └── learning/              # 基础知识学习专区（四大板块）
         ├── 1.blockchain/      #   区块链学习指南
-        ├── 2.库详解/          #   backtrader 详解 / pandas / sklearn / xgboost / tensorflow / chromadb / …
+        ├── 2.库详解/          #   第三方库详解（按用途分两个子目录）
+        │   ├── 机器学习相关库/            #   sklearn / xgboost / tensorflow_keras / chromadb / tiktoken
+        │   └── 数据分析与量化研究相关库/   #   pandas / pandas量化应用 / matplotlib / scipy / backtrader
         ├── 3.聚宽函数详解/    #   聚宽 get_ 系列函数详解
-        └── 4.机器学习/        #   机器学习完全指南（21 章）
+        └── 4.机器学习/        #   机器学习完全指南（24 章）
 ```
 
 > **关于两套教材**：同一个策略有**两份完全独立的详解**——`docs/joinquant/` 讲聚宽云端写法（`initialize` / `run_daily` / `get_fundamentals`…），`docs/backtrader/` 讲本地 backtrader 写法（`Cerebro` / `next()` / `bt.ind` / `PanelStrategy`…）。
-> 两份教材在开头互相链接、在"差异"一节逐条对照，但**各自独立成篇**，不需要来回跳着看。语法底座统一在 [`docs/learning/2.库详解/backtrader详解.md`](docs/learning/2.库详解/backtrader详解.md)。
+> 两份教材在开头互相链接、在"差异"一节逐条对照，但**各自独立成篇**，不需要来回跳着看。语法底座统一在 [`docs/learning/2.库详解/数据分析与量化研究相关库/backtrader详解.md`](docs/learning/2.库详解/数据分析与量化研究相关库/backtrader详解.md)。
 
 ---
 
@@ -182,18 +184,27 @@ Quant_Lab/
 
 ### 板块二：库详解（`2.库详解`）
 
+按用途分成**两个子目录**（索引见 [`2.库详解/README.md`](docs/learning/2.库详解/README.md)）：
+
+**① 机器学习相关库**（`2.库详解/机器学习相关库/`）
+
 | 文档 | 内容 |
 |------|------|
-| `backtrader详解.md` | **本地回测引擎教程 + 手册**（18 章：心智模型、15 行模板逐行讲、Line 与索引、生命周期、DataFeed、Strategy、指标、Analyzer、费用滑点、多标的调仓、Cerebro、参数优化、聚宽对照表、btlab API、常见坑、可运行模板、自测题） |
-| `pandas详解.md` | pandas 学习指南（Series/DataFrame、常用操作、完整选股示例） |
-| `pandas量化应用.md` | pandas 量化应用（收益率、滚动窗口、因子计算、IC、分层回测） |
-| `sklearn详解.md` | scikit-learn 详解（模块结构、API 哲学、预处理/切分/模型/聚类/降维/指标） |
-| `xgboost详解.md` | XGBoost 详解（参数表、完整示例、因子合成/筛选应用） |
-| `tensorflow_keras详解.md` | 深度学习框架详解（Sequential/Dense/LSTM/Conv1D/池化/编译训练） |
-| `chromadb详解.md` | 向量数据库详解（Client/Collection/add/query、研报知识库示例） |
-| `tiktoken详解.md` | OpenAI 分词器详解（编码格式、encode/decode、成本估算） |
-| `scipy详解.md` | 科学计算详解（层次聚类 linkage/dendrogram、股票聚类示例） |
-| `matplotlib详解.md` | 数据可视化详解（plot/bar/hist/subplots、因子可视化示例） |
+| [sklearn详解.md](docs/learning/2.库详解/机器学习相关库/sklearn详解.md) | scikit-learn 详解（模块结构、API 哲学、预处理/切分/模型/聚类/降维/指标） |
+| [xgboost详解.md](docs/learning/2.库详解/机器学习相关库/xgboost详解.md) | XGBoost 详解（参数表、完整示例、因子合成/筛选应用） |
+| [tensorflow_keras详解.md](docs/learning/2.库详解/机器学习相关库/tensorflow_keras详解.md) | 深度学习框架详解（Sequential/Dense/LSTM/Conv1D/池化/编译训练） |
+| [chromadb详解.md](docs/learning/2.库详解/机器学习相关库/chromadb详解.md) | 向量数据库详解（Client/Collection/add/query、研报知识库示例） |
+| [tiktoken详解.md](docs/learning/2.库详解/机器学习相关库/tiktoken详解.md) | OpenAI 分词器详解（编码格式、encode/decode、成本估算） |
+
+**② 数据分析与量化研究相关库**（`2.库详解/数据分析与量化研究相关库/`）
+
+| 文档 | 内容 |
+|------|------|
+| [backtrader详解.md](docs/learning/2.库详解/数据分析与量化研究相关库/backtrader详解.md) | **本地回测引擎教程 + 手册**（18 章：心智模型、15 行模板逐行讲、Line 与索引、生命周期、DataFeed、Strategy、指标、Analyzer、费用滑点、多标的调仓、Cerebro、参数优化、聚宽对照表、btlab API、常见坑、可运行模板、自测题） |
+| [pandas详解.md](docs/learning/2.库详解/数据分析与量化研究相关库/pandas详解.md) | pandas 学习指南（Series/DataFrame、常用操作、完整选股示例） |
+| [pandas量化应用.md](docs/learning/2.库详解/数据分析与量化研究相关库/pandas量化应用.md) | pandas 量化应用（收益率、滚动窗口、因子计算、IC、分层回测） |
+| [matplotlib详解.md](docs/learning/2.库详解/数据分析与量化研究相关库/matplotlib详解.md) | 数据可视化详解（plot/bar/hist/subplots、因子可视化示例） |
+| [scipy详解.md](docs/learning/2.库详解/数据分析与量化研究相关库/scipy详解.md) | 科学计算详解（层次聚类 linkage/dendrogram、股票聚类示例） |
 
 ### 板块三：聚宽函数详解（`3.聚宽函数详解`）
 
@@ -205,7 +216,7 @@ Quant_Lab/
 
 | 文档 | 内容 |
 |------|------|
-| `机器学习完全指南.md` | 从 AI 到大模型到量化实战（21 章：AI 全景/LLM/Agent/核心概念/sklearn/金融特殊性/模型/深度学习/强化学习/评估/实战/陷阱/术语表 + AI 基础概念/ReAct/回归/聚类/PCA + 考点速记） |
+| `机器学习完全指南.md` | 从 AI 到大模型到量化实战（**24 章**：AI 全景/LLM/Agent/核心概念/sklearn/金融特殊性/模型/深度学习/强化学习/评估/实战/陷阱/术语表 + AI 基础概念/ReAct/回归/聚类/PCA + **数据可视化全解 / 人脸识别实战（PCA 特征脸 + SVM）/ 课程清单补遗** + 考点速记） |
 
 ---
 
