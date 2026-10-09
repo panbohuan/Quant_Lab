@@ -23,14 +23,14 @@
   `docs/本地回测使用指南.md`、根 `README.md`（结构树 + 板块二表格）、`CHANGELOG` 历史条目；
 - 全仓库 **141 个 md 链接**检查通过。
 
-### 二、《机器学习完全指南》按课程清单补齐（2467 → 3504 行，新增 3 章）
+### 二、《机器学习完全指南》按课程清单补齐（内容**融合进原有章节**，不新增尾部章节）
 
 对照「重要库清单 + 机器学习知识点清单」逐条核对后补齐：
 
-- **第 21 章 数据可视化全解**：折线/散点/直方图、`subplot` 与 `subplots` 子图布局、
+- **可视化**（并入第 5 章 5.8~5.10）：折线/散点/直方图、`subplot` 与 `subplots` 子图布局、
   标题与坐标轴、`savefig`/`show`、`seaborn.pairplot`、三维散点（`mplot3d`）、
   **决策边界**（`np.meshgrid` + `np.c_` + `contourf`）、特征脸可视化、中文乱码与 `Agg` 后端；
-- **第 22 章 人脸识别实战**（Olivetti Faces）：读图 → `cv2` 灰度 → 展平 → PCA 特征脸 → SVM，
+- **人脸识别实战**（并入第 20 章 E.5/E.6）：读图 → `cv2` 灰度 → 展平 → PCA 特征脸 → SVM，
   含 `os.makedirs` / `zipfile` 解压、数据探索、`stratify` 划分、训练集 fit / 测试集 transform、
   `PCA(n_components=0.95, whiten=True)`、`SVC(rbf)` + `class_weight` + `ovr`、
   `GridSearchCV`/`best_estimator_`、`classification_report` + 混淆矩阵、**完整可运行脚本**；
@@ -40,7 +40,7 @@
   SVM 深入（超平面/间隔/支持向量、C 的影响、四种核函数、`class_weight`、`ovr`）、
   分类评估与混淆矩阵、泛化与过拟合、`logging`/`time`/`os` 小工具，
   以及**课程清单覆盖检查表**（库清单 + 知识点清单逐条对应章节）；
-- 原第 21 章「考点速记」顺延为第 24 章；目录与根 README 同步更新；
+- 章节编号保持原样（0~21 章），考点速记仍是第 21 章；目录与根 README 同步更新；
 - **81 个 python 代码块 AST 语法检查 0 错误**（沙箱内 pip 被拦，未能安装 sklearn/matplotlib 实跑）。
 
 ### 三、股票池与幸存者偏差（新增文档 + 数据层能力）
