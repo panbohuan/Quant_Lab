@@ -5,6 +5,69 @@
 
 ---
 
+## v4.1.2（2026-10-09）—— 教材结构重构 + 机器学习补齐 + 股票池方案
+
+> 三件事：**库详解目录按用途拆分**、**机器学习文档按课程清单补齐**、**股票池引入「全市场 / 申万行业指数」两条路线**。
+
+### 一、`docs/learning/2.库详解/` 按用途拆成两个子目录
+
+```
+2.库详解/
+├── README.md                        # 改为两个子目录的总索引（+ 安装速查 + 核心函数速查）
+├── 机器学习相关库/                   # sklearn / xgboost / tensorflow_keras / chromadb / tiktoken
+└── 数据分析与量化研究相关库/          # pandas / pandas量化应用 / matplotlib / scipy / backtrader
+```
+
+- 用 **`git mv`** 移动，保留文件历史；
+- 同步更新 **24 处引用**：20 篇策略文档的「语法底座」链接、`docs/backtrader/README.md`、
+  `docs/本地回测使用指南.md`、根 `README.md`（结构树 + 板块二表格）、`CHANGELOG` 历史条目；
+- 全仓库 **141 个 md 链接**检查通过。
+
+### 二、《机器学习完全指南》按课程清单补齐（2467 → 3504 行，新增 3 章）
+
+对照「重要库清单 + 机器学习知识点清单」逐条核对后补齐：
+
+- **第 21 章 数据可视化全解**：折线/散点/直方图、`subplot` 与 `subplots` 子图布局、
+  标题与坐标轴、`savefig`/`show`、`seaborn.pairplot`、三维散点（`mplot3d`）、
+  **决策边界**（`np.meshgrid` + `np.c_` + `contourf`）、特征脸可视化、中文乱码与 `Agg` 后端；
+- **第 22 章 人脸识别实战**（Olivetti Faces）：读图 → `cv2` 灰度 → 展平 → PCA 特征脸 → SVM，
+  含 `os.makedirs` / `zipfile` 解压、数据探索、`stratify` 划分、训练集 fit / 测试集 transform、
+  `PCA(n_components=0.95, whiten=True)`、`SVC(rbf)` + `class_weight` + `ovr`、
+  `GridSearchCV`/`best_estimator_`、`classification_report` + 混淆矩阵、**完整可运行脚本**；
+- **第 23 章 清单补遗**：数据探索四件套、标准化 vs 归一化、
+  `fit`/`transform`/`fit_transform` 与数据泄露（正反例）、
+  K-Means 评估三件套（`inertia_` / CH 系数 / 轮廓系数）+ 手肘法、
+  SVM 深入（超平面/间隔/支持向量、C 的影响、四种核函数、`class_weight`、`ovr`）、
+  分类评估与混淆矩阵、泛化与过拟合、`logging`/`time`/`os` 小工具，
+  以及**课程清单覆盖检查表**（库清单 + 知识点清单逐条对应章节）；
+- 原第 21 章「考点速记」顺延为第 24 章；目录与根 README 同步更新；
+- **81 个 python 代码块 AST 语法检查 0 错误**（沙箱内 pip 被拦，未能安装 sklearn/matplotlib 实跑）。
+
+### 三、股票池与幸存者偏差（新增文档 + 数据层能力）
+
+新增 **[docs/股票池与幸存者偏差.md](docs/股票池与幸存者偏差.md)**，结论：
+
+- 免费数据只给「**当前**」股票名单 → 历史回测存在**幸存者偏差**（退市/被并购的票不在名单里）；
+- **改用「全市场 + 过滤」只能消除「指数成分股入选偏差」，不能消除退市偏差**；
+- 过滤条件必须用「**当时可知**」的信息（如 K 线根数 ≥ 120 = 上市满 120 个交易日）；
+  用「今天的 ST 名单 / 市值」过滤历史会**引入新的未来函数**；
+- **真正的解法：用申万行业指数当标的层**（指数点位序列连续发布，无退市偏差；
+  代价是不可直接交易，落地需行业 ETF）。
+
+代码改动：
+
+- `btlab/datasource.py` 新增 `load_all_stocks()`（全市场代码表，docstring 明确标注偏差）、
+  `load_market_universe()`（全市场抽样 + 时点内过滤）、
+  `load_sw_universe()`（全部申万一级行业指数 —— 无幸存者偏差的标的层）；
+- `bt_a02_sector_rotation.py` 改用 `load_sw_universe()`，去掉内联的行业抓取逻辑；
+- 根 README「边界说明」第 1/3 条同步更新并链接新文档。
+
+**验证**：`datasource.py` 语法检查通过；用桩模块验证
+`load_all_stocks` / `load_market_universe` 的列名归一化、缓存读写、抽样可复现性与 `min_bars` 过滤。
+（`load_sw_universe` 依赖真实行业接口，当前沙箱 pip 被拦未能联网实测。）
+
+---
+
 ## v4.1.1（2026-10）之一 —— 回测正确性修复 + 注释精简
 
 > 依据一次完整 code review，修复了一批影响回测结果可信度的 bug，并把与教材重复的代码注释压成简短头部。
